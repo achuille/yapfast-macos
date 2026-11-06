@@ -383,7 +383,12 @@ static int receive_picture(struct yapfast_video *video, int64_t *time_ms) {
       int64_t pts;
       int got=yf_vt_receive(video->vt,planes->data,planes->stride,&planes->width,&planes->height,&pts);
       if(got<=0) return got;
-      planes->depth=8; planes->layout=LAYOUT_420; planes->bt709=bt709(-1,planes->height); planes->full_range=0;
+      const AVCodecParameters *parameters = video->format->streams[video->stream]->codecpar;
+      planes->depth=8; planes->layout=LAYOUT_420;
+      planes->bt709=bt709(parameters->color_space == AVCOL_SPC_UNSPECIFIED
+          ? -1 : parameters->color_space == AVCOL_SPC_BT709, planes->height);
+      /* The VideoToolbox session requests video-range NV12. */
+      planes->full_range=0;
       *time_ms=milliseconds(video,video->stream,pts);
       return 1;
     }
