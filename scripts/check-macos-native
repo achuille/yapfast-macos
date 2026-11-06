@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Exercise native audio/video boundaries with memory and UB sanitizers.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/yapfast-native.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+flags=(-Wall -Wextra -Werror -fsanitize=address,undefined -g)
+xcrun clang "${flags[@]}" testing/coreaudio-smoke.c \
+  -framework AudioToolbox -framework CoreFoundation -framework CoreAudio -o "$scratch/audio"
+"$scratch/audio"
+xcrun clang "${flags[@]}" testing/macos-media-smoke.c \
+  crates/yapfast-core/native/videotoolbox.c crates/yapfast-core/native/audiodecode.c \
+  -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
+  -framework CoreFoundation -framework AudioToolbox -o "$scratch/media"
+"$scratch/media"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Formatting, doc links, Clippy, tests and a smoke run of the default build,
 # Discord on the desktop; --matrix adds the builds with Matrix.
-# Usage: scripts/check [--fast] [--matrix]
+# Usage: scripts/check [--fast | --release] [--matrix]
 # --fast builds with the `fast` profile, which local work uses. Each step
 # prints `=== step` and `rc=N` when it ends; its full output is in
 # target/check/. The script exits non-zero when any step failed, after running
@@ -20,8 +20,9 @@ matrix=
 for argument in "$@"; do
   case $argument in
     --fast) profile=(--profile fast) profile_dir=fast ;;
+    --release) profile=(--release) profile_dir=release ;;
     --matrix) matrix=1 ;;
-    *) echo "usage: scripts/check [--fast] [--matrix]" >&2; exit 2 ;;
+    *) echo "usage: scripts/check [--fast | --release] [--matrix]" >&2; exit 2 ;;
   esac
 done
 
@@ -67,7 +68,7 @@ run build cargo build --locked "${profile[@]}" "${workspace[@]}"
 # The binary the build step made: `cargo run` would resolve the dependencies'
 # features for yapfast alone, not the workspace, and compile it again.
 if [[ "$(cat "$logs/build.rc")" == 0 ]]; then
-  run smoke "target/$profile_dir/yapfast" --smoke-test
+  run smoke "${CARGO_TARGET_DIR:-target}/$profile_dir/yapfast" --smoke-test
 else
   echo "=== smoke: skipped, as the build failed"
 fi

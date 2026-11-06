@@ -7,6 +7,13 @@ use std::cell::Cell;
 
 /// What the tray asks for, or says. Each runs on Slint's event loop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    target_os = "macos",
+    allow(
+        dead_code,
+        reason = "menu bar integration is not yet implemented on macOS"
+    )
+)]
 pub enum Choice {
     Open,
     Disconnect,
@@ -56,6 +63,7 @@ impl Tray {
 
 /// Yapfast's logo in Yap's marigold, `size` pixels square, with a red dot for
 /// unread messages cut into its corner.
+#[cfg(any(target_os = "linux", windows, test))]
 fn logo(size: u32, unread: bool) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
     let mut svg = include_str!("../ui/icons/logo.svg")
         .replacen(

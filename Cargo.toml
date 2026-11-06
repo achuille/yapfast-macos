@@ -90,6 +90,12 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 # spins a core while it waits for the screen. See src/graphics.rs.
 i-slint-renderer-skia = { version = "=1.19.0", features = ["wgpu-30"], optional = true }
 
+# Metal on macOS; keep the renderer dependency out of Linux builds.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSView", "NSWindow"] }
+i-slint-renderer-skia = { version = "=1.19.0", features = ["wgpu-30"], optional = true }
+
 # A stand-in tray on the private test bus; see testing/tray_host.rs.
 [build-dependencies]
 emojis = "0.9"

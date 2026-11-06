@@ -10086,3 +10086,22 @@ mod ownership;
 mod people;
 #[cfg(feature = "discord")]
 mod server_settings;
+
+#[test]
+fn local_preview_does_not_report_a_disconnected_network() {
+    let mut app = Application::default();
+    app.dispatch(Action::Preview);
+    let notice = app.state.notice.clone();
+    let effects = app.dispatch(Action::VisibleMessages {
+        room: "general".into(),
+        items: vec!["general-0".into()],
+        at_end: true,
+    });
+    assert!(
+        effects.is_empty(),
+        "local messages must not contact a backend"
+    );
+    app.stopped();
+    assert!(app.state.preview);
+    assert_eq!(app.state.notice, notice);
+}

@@ -125,20 +125,20 @@ export component Composer inherits Rectangle {
             }
             if event.text == Key.Escape && root.escaped() { return accept; }
             if event.text == Key.UpArrow && event.modifiers.alt { root.up-to-messages(); return accept; }
-            if event.text == Key.UpArrow && root.text == "" && !event.modifiers.shift && !event.modifiers.control {
+            if event.text == Key.UpArrow && root.text == "" && !event.modifiers.shift && !(event.modifiers.control || event.modifiers.meta) {
                 root.up-from-empty();
                 return accept;
             }
-            if event.text == Key.Return && !event.modifiers.shift && !event.modifiers.control && !event.modifiers.alt {
+            if event.text == Key.Return && !event.modifiers.shift && !(event.modifiers.control || event.modifiers.meta) && !event.modifiers.alt {
                 root.accepted();
                 return accept;
             }
-            if (event.text == "v" || event.text == "V") && event.modifiers.control && !event.modifiers.alt && root.enabled {
+            if (event.text == "v" || event.text == "V") && (event.modifiers.control || event.modifiers.meta) && !event.modifiers.alt && root.enabled {
                 root.paste();
                 return accept;
             }
             if (event.text == "g" || event.text == "G" || event.text == "e" || event.text == "E")
-                && event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && root.enabled {
+                && (event.modifiers.control || event.modifiers.meta) && !event.modifiers.alt && !event.modifiers.shift && root.enabled {
                 root.expressions(event.text == "g" || event.text == "G" ? 0 : 1);
                 return accept;
             }

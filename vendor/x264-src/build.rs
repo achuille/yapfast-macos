@@ -153,7 +153,11 @@ fn assemble(root: &Path, out: &Path, target: &Target) -> Vec<PathBuf> {
     let format = if target.os == "windows" {
         "win64"
     } else {
-        "elf64"
+        if target.os == "macos" {
+            "macho64"
+        } else {
+            "elf64"
+        }
     };
     let files =
         std::iter::once(("cpu-a.asm", false)).chain(X86_ASM.iter().map(|file| (*file, true)));
@@ -168,6 +172,9 @@ fn assemble(root: &Path, out: &Path, target: &Target) -> Vec<PathBuf> {
             .args(["-DARCH_X86_64=1", "-DSTACK_ALIGNMENT=16", "-f", format]);
         if target.os != "windows" {
             command.arg("-DPIC");
+        }
+        if target.os == "macos" {
+            command.arg("-DPREFIX");
         }
         if per_depth {
             command.args(["-DBIT_DEPTH=8", "-Dprivate_prefix=x264_8"]);
@@ -215,6 +222,7 @@ impl Target {
             ("HAVE_MMX", u8::from(self.x86_64)),
             ("ARCH_X86_64", u8::from(self.x86_64)),
             ("SYS_LINUX", u8::from(linux)),
+            ("SYS_MACOSX", u8::from(self.os == "macos")),
             ("SYS_WINDOWS", u8::from(windows)),
             ("HAVE_POSIXTHREAD", u8::from(!windows)),
             ("HAVE_WIN32THREAD", u8::from(windows)),

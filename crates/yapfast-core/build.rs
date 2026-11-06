@@ -6,6 +6,34 @@
 use std::{env, path::PathBuf, process::Command};
 
 fn main() {
+    // Link Objective-C categories from static libwebrtc into each final executable.
+    // rustc-link-arg from webrtc-sys does not propagate through its rlib.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg=-Wl,-ObjC");
+    }
+
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rerun-if-changed=native/coreaudio.c");
+        println!("cargo:rerun-if-changed=native/videotoolbox.c");
+        println!("cargo:rerun-if-changed=native/videotoolbox.h");
+        println!("cargo:rerun-if-changed=native/audiodecode.c");
+        println!("cargo:rerun-if-changed=native/audiodecode.h");
+        cc::Build::new()
+            .file("native/videotoolbox.c")
+            .file("native/audiodecode.c")
+            .warnings(true)
+            .compile("yapfast_videotoolbox");
+        println!("cargo:rustc-link-lib=framework=VideoToolbox");
+        println!("cargo:rustc-link-lib=framework=CoreMedia");
+        println!("cargo:rustc-link-lib=framework=CoreVideo");
+        cc::Build::new()
+            .file("native/coreaudio.c")
+            .warnings(true)
+            .compile("yapfast_coreaudio");
+        println!("cargo:rustc-link-lib=framework=AudioToolbox");
+        println!("cargo:rustc-link-lib=framework=CoreAudio");
+        println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    }
     for file in [
         "vp8.c",
         "h264.c",

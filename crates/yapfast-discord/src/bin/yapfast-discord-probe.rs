@@ -21,7 +21,7 @@ use yapfast_discord::{
 };
 
 const USAGE: &str = "usage: yapfast-discord-probe <command>
-  store-token              save the test account's token in the OS credential store
+  store-token [--stdin]    save the test account's token in the OS credential store
   whoami                   show which account the saved token belongs to
   servers                  list servers and their text and voice channels
   messages <channel>       print a text channel's latest messages
@@ -39,7 +39,13 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("store-token") => {
-            let token = read_hidden("Paste the test account's token (hidden): ")?;
+            let token = if args.get(1).is_some_and(|arg| arg == "--stdin") {
+                let mut line = String::new();
+                std::io::stdin().read_line(&mut line)?;
+                line
+            } else {
+                read_hidden("Paste the test account's token (hidden): ")?
+            };
             token::store(&token)?;
             println!("Saved in the OS credential store.");
             whoami().await

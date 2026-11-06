@@ -2524,6 +2524,8 @@ impl Application {
 
     fn dispatch_action(&mut self, action: Action) -> Vec<Effect> {
         match action {
+            // Local sample conversations have no network reader to notify.
+            Action::VisibleMessages { .. } if self.state.preview => vec![],
             Action::VisibleMessages {
                 room,
                 items,

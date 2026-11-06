@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Build a relocatable macOS application using the pinned Rust toolchain.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ $(uname -s) == Darwin ]] || { echo 'Build this app on macOS.' >&2; exit 1; }
+export MACOSX_DEPLOYMENT_TARGET=13.0
+# Keep compiler intermediates out of Documents/iCloud/Drive sync folders.
+export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$HOME/.local/share/yapfast-build/target"}
+# LLVM stripping can produce dylibs rejected by macOS dyld. Strip only the app.
+export CARGO_PROFILE_RELEASE_STRIP=none
+export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
+command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
+for tool in cargo cmake ninja pkg-config; do
+  command -v "$tool" >/dev/null || { echo "Missing $tool. See docs/macos.md." >&2; exit 1; }
+done
+source scripts/release-env "$(rustc -vV | sed -n 's/^host: //p')"
+cargo build --locked --release --bin yapfast
+python3 scripts/package-macos.py

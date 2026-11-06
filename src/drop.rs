@@ -27,6 +27,8 @@ pub struct Pointer {
 }
 
 enum Source {
+    #[cfg(target_os = "macos")]
+    AppKit(objc2::rc::Retained<objc2_app_kit::NSView>),
     /// A connection of its own, and the window.
     #[cfg(target_os = "linux")]
     X11(x11rb::rust_connection::RustConnection, u32),
@@ -39,6 +41,13 @@ impl Pointer {
         use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
         let handle = window.window_handle().ok()?.as_raw();
         let source = match handle {
+            #[cfg(target_os = "macos")]
+            RawWindowHandle::AppKit(handle) => {
+                // The live winit window owns this NSView. Retain it while tracking a drag.
+                Source::AppKit(unsafe {
+                    objc2::rc::Retained::retain(handle.ns_view.as_ptr().cast())
+                }?)
+            }
             #[cfg(target_os = "linux")]
             RawWindowHandle::Xlib(handle) => Self::x11(handle.window as u32)?,
             #[cfg(target_os = "linux")]
@@ -67,6 +76,17 @@ impl Pointer {
     /// Where it is now, unless the platform won't say.
     pub fn at(&self) -> Option<Drag> {
         let (x, y) = match &self.source {
+            #[cfg(target_os = "macos")]
+            Source::AppKit(view) => {
+                let point = view.window()?.mouseLocationOutsideOfEventStream();
+                let point = view.convertPoint_fromView(point, None);
+                let y = if view.isFlipped() {
+                    point.y
+                } else {
+                    view.bounds().size.height - point.y
+                };
+                (point.x * self.scale, y * self.scale)
+            }
             #[cfg(target_os = "linux")]
             Source::X11(connection, window) => {
                 use x11rb::protocol::xproto::ConnectionExt;

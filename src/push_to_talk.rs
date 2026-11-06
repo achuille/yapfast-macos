@@ -147,6 +147,13 @@ pub enum Reach {
     Asking,
     /// In every app; with the shortcut the desktop gave it, in its own
     /// words, when it says.
+    #[cfg_attr(
+        target_os = "macos",
+        allow(
+            dead_code,
+            reason = "global push-to-talk is not yet implemented on macOS"
+        )
+    )]
     Everywhere(Option<String>),
     /// Only while Yapfast's window has the focus, for this reason, which
     /// the note goes on from.
@@ -286,6 +293,7 @@ impl Drop for Watcher {
     }
 }
 
+#[cfg(any(target_os = "linux", windows))]
 type Report = Arc<dyn Fn(Reach) + Send + Sync>;
 
 #[cfg(target_os = "linux")]

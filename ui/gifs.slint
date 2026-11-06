@@ -116,7 +116,7 @@ export component GifPicker inherits VerticalLayout {
                 if root.view != 0 { root.back(); } else { root.close(); }
                 return accept;
             }
-            if (event.text == "g" || event.text == "G") && event.modifiers.control {
+            if (event.text == "g" || event.text == "G") && (event.modifiers.control || event.modifiers.meta) {
                 root.close();
                 return accept;
             }

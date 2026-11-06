@@ -506,6 +506,16 @@ mod tests {
             ("gif-vp9-444-10bit.webm", "gif-h264-444.mp4", 3.0),
             ("gif-av1-444.mp4", "gif-h264-444.mp4", 3.0),
         ] {
+            // VideoToolbox on macOS supports H264 8-bit 4:2:0. Keep checking
+            // deep AV1/VP9, using the original as the colour reference there.
+            if cfg!(target_os = "macos") && name.starts_with("gif-h264-") {
+                continue;
+            }
+            let (like, within) = if cfg!(target_os = "macos") && like.starts_with("gif-h264-") {
+                ("gif-h264.mp4", 12.0)
+            } else {
+                (like, within)
+            };
             let (pictures, expected) = (frames(name), frames(like));
             assert_eq!(pictures.len(), expected.len(), "{name}");
             for (picture, expected) in pictures.iter().zip(&expected) {
@@ -517,6 +527,14 @@ mod tests {
                 mean < within,
                 "{name} at its own size: off by {mean} a channel"
             );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unsupported_h264_profiles_fail_without_a_partial_animation() {
+        for name in ["gif-h264-10bit.mp4", "gif-h264-422.mp4", "gif-h264-444.mp4"] {
+            assert!(decode_animation(&fixture(name), 32, 32).is_none(), "{name}");
         }
     }
 

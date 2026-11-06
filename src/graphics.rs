@@ -1,13 +1,14 @@
 //! Renderer choice at startup and recovery from a failed GPU start.
 //!
-//! Yapfast renders with Skia Software. In a ten-person call it used about half the
+//! Linux and Windows default to Skia Software; macOS defaults to Metal.
+//! In an upstream ten-person call, software used about half the
 //! memory of Skia GPU at the same CPU, and scrolling a long history at 2× scale
 //! cost less CPU too. The GPU is a setting, which `--renderer` overrides for one
 //! start; if the GPU fails, Yapfast restarts itself with Skia Software, says why and
 //! turns the setting off. Slint picks one renderer per process and never unloads
 //! the graphics driver, so a changed setting applies when Yapfast restarts.
 //!
-//! Skia GPU draws through OpenGL on Linux and through Direct3D 12 on Windows.
+//! Skia GPU draws through OpenGL on Linux, Direct3D 12 on Windows and Metal on macOS.
 //! There, NVIDIA's OpenGL driver kept a core busy while Yapfast drew with it.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

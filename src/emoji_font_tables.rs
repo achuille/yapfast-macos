@@ -81,7 +81,7 @@ pub fn build_strike(
 ) -> Vec<u8> {
     let count = u16::try_from(glyphs.len() + 1).expect("fewer than 65535 glyphs");
     let advance = units(i32::from(strike.advance), strike);
-    let tables: [([u8; 4], Vec<u8>); 10] = [
+    let mut tables: Vec<([u8; 4], Vec<u8>)> = vec![
         (*b"CBDT", cbdt(strike, glyphs)),
         (*b"CBLC", cblc(strike, glyphs)),
         (*b"OS/2", os2(advance, glyphs)),
@@ -93,7 +93,64 @@ pub fn build_strike(
         (*b"name", name(family)),
         (*b"post", post()),
     ];
+    if cfg!(target_os = "macos") {
+        // CoreText accepts sbix bitmap fonts, not CBDT-only fonts.
+        tables.retain(|(tag, _)| tag != b"CBDT" && tag != b"CBLC");
+        tables.push((*b"sbix", sbix(strike, glyphs)));
+        let left = units(i32::from(strike.bearing_x), strike);
+        let bottom = units(i32::from(strike.bearing_y) - i32::from(strike.side), strike);
+        let side = units(i32::from(strike.side), strike);
+        let mut outline = Vec::new();
+        for value in [1i16, left, bottom, left + side, bottom + side, 3, 0] {
+            put16(&mut outline, value as u16);
+        }
+        outline.extend_from_slice(&[1; 4]);
+        for value in [left, side, 0, -side, bottom, 0, side, 0] {
+            put16(&mut outline, value as u16);
+        }
+        let mut loca = Vec::new();
+        for glyph in 0..=u32::from(count) {
+            put32(&mut loca, glyph * outline.len() as u32);
+        }
+        tables.push((*b"glyf", outline.repeat(usize::from(count))));
+        tables.push((*b"loca", loca));
+        tables.iter_mut().find(|(tag, _)| tag == b"head").unwrap().1[50..52]
+            .copy_from_slice(&1u16.to_be_bytes());
+        let maxp = tables.iter_mut().find(|(tag, _)| tag == b"maxp").unwrap();
+        maxp.1[..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        maxp.1.resize(32, 0);
+        maxp.1[6..8].copy_from_slice(&4u16.to_be_bytes());
+        maxp.1[8..10].copy_from_slice(&1u16.to_be_bytes());
+        maxp.1[14..16].copy_from_slice(&1u16.to_be_bytes());
+        tables.sort_by_key(|(tag, _)| *tag);
+    }
     assemble(&tables)
+}
+
+/// Apple's bitmap strike: offsets include the empty .notdef glyph.
+fn sbix(strike: &Strike, glyphs: &[(char, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    put16(&mut out, 1);
+    put16(&mut out, 1);
+    put32(&mut out, 1);
+    put32(&mut out, 12);
+    put16(&mut out, u16::from(strike.ppem));
+    put16(&mut out, 72);
+    let mut offset = 4 + 4 * (glyphs.len() as u32 + 2);
+    put32(&mut out, offset);
+    put32(&mut out, offset);
+    for (_, png) in glyphs {
+        offset += 8 + png.len() as u32;
+        put32(&mut out, offset);
+    }
+    for (_, png) in glyphs {
+        // CoreText anchors bitmap glyphs at the outline's lower-left corner.
+        put16(&mut out, 0);
+        put16(&mut out, 0);
+        out.extend_from_slice(b"png ");
+        out.extend_from_slice(png);
+    }
+    out
 }
 
 /// A font of `tables`, which must be in the order of their tags.
@@ -430,11 +487,17 @@ pub fn table_at(font: &[u8], tag: &[u8; 4]) -> std::ops::Range<usize> {
 #[allow(dead_code, reason = "build.rs builds this font")]
 pub fn pictures_at(font: &[u8], glyphs: &[(char, Vec<u8>)]) -> Vec<std::ops::Range<usize>> {
     // After the table's header, each is a small metrics record and its length.
-    let mut at = table_at(font, b"CBDT").start + 4;
+    let apple = cfg!(target_os = "macos");
+    let record = if apple { 8 } else { 9 };
+    let mut at = if apple {
+        table_at(font, b"sbix").start + 12 + 4 + 4 * (glyphs.len() + 2)
+    } else {
+        table_at(font, b"CBDT").start + 4
+    };
     glyphs
         .iter()
         .map(|(_, png)| {
-            let start = at + 9;
+            let start = at + record;
             at = start + png.len();
             start..at
         })

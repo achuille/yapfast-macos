@@ -1,6 +1,9 @@
 /* Decoding Go Live video someone else streams: VP8 through libvpx and H264
  * through FFmpeg, both inside Yapfast's libwebrtc archive. Pictures come out
  * as I420 planes that stay valid until the next call on the decoder. */
+#ifdef __APPLE__
+#include "videotoolbox.h"
+#endif
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +20,9 @@ enum { MAX_SIDE = 8192 };
 
 struct yapfast_decoder {
   int codec;
+#ifdef __APPLE__
+  struct yf_vt_stream *vt;
+#endif
   vpx_codec_ctx_t vpx;
   AVCodecContext *context;
   AVPacket *packet;
@@ -46,6 +52,9 @@ void yapfast_decoder_free(struct yapfast_decoder *decoder) {
     av_frame_free(&decoder->frame);
     free(decoder->padded);
   }
+#ifdef __APPLE__
+  yf_vt_stream_free(decoder->vt);
+#endif
   free(decoder);
 }
 
@@ -65,6 +74,11 @@ struct yapfast_decoder *yapfast_decoder_new(int codec, unsigned threads) {
     free(decoder);
     return NULL;
   }
+#ifdef __APPLE__
+  decoder->vt = yf_vt_stream_new();
+  if (!decoder->vt) { free(decoder); return NULL; }
+  return decoder;
+#endif
   const AVCodec *h264 = avcodec_find_decoder(AV_CODEC_ID_H264);
   decoder->context = h264 ? avcodec_alloc_context3(h264) : NULL;
   decoder->packet = av_packet_alloc();
@@ -106,6 +120,18 @@ int yapfast_decoder_decode(struct yapfast_decoder *decoder, const unsigned char 
     picture->v_stride = image->stride[VPX_PLANE_V];
     return 1;
   }
+#ifdef __APPLE__
+  if (decoder->vt) {
+    const uint8_t *planes[3]; int strides[3];
+    int result = yf_vt_stream_decode(decoder->vt, data, size, planes, strides,
+                                     &picture->width, &picture->height);
+    if (result > 0) {
+      picture->y = planes[0]; picture->u = planes[1]; picture->v = planes[2];
+      picture->y_stride = strides[0]; picture->u_stride = strides[1]; picture->v_stride = strides[2];
+    }
+    return result;
+  }
+#endif
   /* FFmpeg's parsers may read a little past the end. */
   size_t needed = size + AV_INPUT_BUFFER_PADDING_SIZE;
   if (decoder->padded_size < needed) {

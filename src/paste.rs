@@ -20,6 +20,7 @@ pub enum Clipboard {
 }
 
 /// Picture types Discord shows inline, best first, with their extensions.
+#[cfg(any(target_os = "linux", windows))]
 const PICTURES: [(&str, &str); 4] = [
     ("image/png", "png"),
     ("image/gif", "gif"),

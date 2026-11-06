@@ -20,7 +20,7 @@ case "$yapfast_release_target" in
     yapfast_rust=(-Ctarget-feature=+crt-static "${yapfast_rust[@]}")
     # cargo-xwin compiles C with clang-cl, which takes Clang's flags this way.
     yapfast_c=("${yapfast_c[@]/#//clang:}") ;;
-  x86_64-unknown-linux-gnu) ;;
+  x86_64-unknown-linux-gnu|aarch64-apple-darwin|x86_64-apple-darwin) ;;
   *) echo "scripts/release-env: no flags known for $yapfast_release_target" >&2; return 2 ;;
 esac
 CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\x1f'; printf '%s' "${yapfast_rust[*]}")
@@ -38,7 +38,10 @@ if [[ "$yapfast_release_target" == *-windows-msvc ]]; then
   export "$yapfast_bindgen=${!yapfast_bindgen:-} --target=$yapfast_release_target"
 fi
 yapfast_cflags="CFLAGS_$yapfast_target_flags" yapfast_cxxflags="CXXFLAGS_$yapfast_target_flags"
-export "$yapfast_cflags=${!yapfast_cflags:-} ${yapfast_c[*]}"
-export "$yapfast_cxxflags=${!yapfast_cxxflags:-} ${yapfast_c[*]}"
+# cc's shell parser preserves paths containing spaces (common on macOS).
+export CC_SHELL_ESCAPED_FLAGS=1
+printf -v yapfast_c_quoted '%q ' "${yapfast_c[@]}"
+export "$yapfast_cflags=${!yapfast_cflags:-} $yapfast_c_quoted"
+export "$yapfast_cxxflags=${!yapfast_cxxflags:-} $yapfast_c_quoted"
 unset yapfast_release_target yapfast_root yapfast_maps yapfast_rust yapfast_c map \
-  yapfast_target_flags yapfast_cflags yapfast_cxxflags yapfast_bindgen
+  yapfast_target_flags yapfast_cflags yapfast_cxxflags yapfast_bindgen yapfast_c_quoted

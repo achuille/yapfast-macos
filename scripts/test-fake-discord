@@ -22,6 +22,7 @@ if [[ -z "${IN_NIX_SHELL:-}" ]] && command -v nix >/dev/null; then
   exec nix develop path:./nix --command "$0" "$@"
 fi
 
+profile=${YAPFAST_TEST_PROFILE:-fast}
 mkdir -p target
 fakes=()
 # Stops every fake: a stopped one's status fails `wait`, which mustn't end
@@ -59,16 +60,16 @@ start_fake() {
 }
 
 if command -v cargo-nextest >/dev/null; then
-  cargo nextest run --locked --cargo-profile fast -p yapfast-discord --test fake_server \
+  cargo nextest run --locked --cargo-profile "$profile" -p yapfast-discord --test fake_server \
     --run-ignored only --no-fail-fast "$@"
 else
-  cargo test --locked --profile fast -p yapfast-discord --test fake_server -- --ignored "$@"
+  cargo test --locked --profile "$profile" -p yapfast-discord --test fake_server -- --ignored "$@"
 fi
 # The shared core's Discord side, against a fake of its own.
 start_fake target/fake-discord.log
 YAPFAST_DISCORD_TEST_SERVER=$server \
-  cargo test --locked --profile fast -p yapfast-core discord_text::tests -- --ignored "$@"
+  cargo test --locked --profile "$profile" -p yapfast-core discord_text::tests -- --ignored "$@"
 # The example environment, in a fake of its own.
 start_fake target/fake-discord-env.log --env testing/envs/example.json
 YAPFAST_DISCORD_TEST_SERVER=$server \
-  cargo test --locked --profile fast -p yapfast-discord --test fake_env -- --ignored "$@"
+  cargo test --locked --profile "$profile" -p yapfast-discord --test fake_env -- --ignored "$@"

@@ -1221,7 +1221,7 @@ export component AdvancedSettings inherits VerticalLayout {
     }
     SettingsSwitch {
         text: "Render with the GPU";
-        description: "Hardware acceleration. Off, Yapfast draws on the processor, which uses about half the memory.";
+        description: "Hardware acceleration. Turn it off to draw on the processor.";
         checked <=> root.gpu-rendering;
         toggled => { root.preferences-changed(); }
     }

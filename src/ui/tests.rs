@@ -209,7 +209,7 @@ fn the_composers_menu_cuts_copies_and_pastes_through_the_application() {
     choose(0.);
     choose(2.);
     window.window().dispatch_event(WindowEvent::KeyPressed {
-        text: Key::End.into(),
+        text: Key::RightArrow.into(),
     });
     choose(1.);
     assert_eq!(window.get_draft(), "hellohello", "Select All, then Copy");
@@ -862,11 +862,13 @@ fn the_renderer_setting_is_remembered() {
     )
     .unwrap();
     bind_callbacks(&window, &adapter);
-    // Software unless chosen.
-    assert!(!window.get_gpu_rendering());
-    window.set_gpu_rendering(true);
+    assert_eq!(window.get_gpu_rendering(), cfg!(target_os = "macos"));
+    window.set_gpu_rendering(!window.get_gpu_rendering());
     window.invoke_preferences_changed();
-    assert!(Layout::read(directory.path()).gpu_rendering);
+    assert_eq!(
+        Layout::read(directory.path()).gpu_rendering,
+        !cfg!(target_os = "macos")
+    );
 }
 
 #[test]

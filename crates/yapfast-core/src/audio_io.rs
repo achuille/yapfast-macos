@@ -7,7 +7,7 @@
 //! copy of their own.
 //!
 //! Linux goes through PulseAudio, or PipeWire's PulseAudio server, and
-//! Windows through WASAPI. Other systems have no sound here yet.
+//! Windows through WASAPI, and macOS through CoreAudio AudioQueue.
 
 use std::{marker::PhantomData, time::Duration};
 #[cfg(feature = "discord")]
@@ -28,10 +28,15 @@ mod wasapi;
 #[cfg(target_os = "windows")]
 use wasapi as platform;
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
 mod unsupported;
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
 use unsupported as platform;
+
+#[cfg(target_os = "macos")]
+mod coreaudio;
+#[cfg(target_os = "macos")]
+use coreaudio as platform;
 
 #[cfg(feature = "discord")]
 mod lasting;
@@ -39,7 +44,11 @@ mod lasting;
 pub use lasting::{LastingInput, LastingOutput};
 
 /// Whether this system has sound here.
-pub const AVAILABLE: bool = cfg!(any(target_os = "linux", target_os = "windows"));
+pub const AVAILABLE: bool = cfg!(any(
+    target_os = "linux",
+    target_os = "windows",
+    target_os = "macos"
+));
 
 /// The rate every stream runs at, unless it asks for another.
 pub const RATE: u32 = 48_000;
@@ -199,6 +208,13 @@ impl<S: Sample> Input<S> {
 
 /// What [`others`] hears from the other applications playing.
 #[cfg(feature = "discord")]
+#[cfg_attr(
+    target_os = "macos",
+    allow(
+        dead_code,
+        reason = "system audio capture is not yet implemented on macOS"
+    )
+)]
 pub enum Heard<'a> {
     /// An application started playing, from this process when the system says.
     Started {

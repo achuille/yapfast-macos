@@ -128,6 +128,10 @@ pub fn run(
             selector.renderer_name("skia".into()).require_d3d(),
             "skia-direct3d",
         ),
+        graphics::Renderer::Gpu if cfg!(target_os = "macos") => (
+            selector.renderer_name("skia".into()).require_metal(),
+            "skia-metal",
+        ),
         graphics::Renderer::Gpu => (selector.renderer_name("skia-opengl".into()), "skia-opengl"),
         graphics::Renderer::Software => (
             selector.renderer_name("skia-software".into()),
@@ -1099,6 +1103,7 @@ struct Layout {
     /// Each sound's own volume as a percentage up to 100%, if it isn't 100%.
     each_sound: std::collections::BTreeMap<Sound, u8>,
     /// Yapfast draws with Skia GPU from its next start; see [`graphics`].
+    #[serde(default = "default_gpu_rendering")]
     gpu_rendering: bool,
     /// Screen sharing encodes on the GPU where it has an encoder; on unless
     /// turned off.
@@ -1133,6 +1138,12 @@ const STRENGTHS: [yapfast_core::noise::Strength; 3] = [
     yapfast_core::noise::Strength::Medium,
     yapfast_core::noise::Strength::Light,
 ];
+
+// Metal reduces redraw CPU cost on Retina displays. Other platforms retain
+// upstream's software default; an explicit saved choice always wins.
+fn default_gpu_rendering() -> bool {
+    cfg!(target_os = "macos")
+}
 
 /// How calls decide when to send the microphone, as Discord's Input Mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1225,7 +1236,10 @@ impl Layout {
         let mut layout: Self = std::fs::read(root.join(LAYOUT))
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+            .unwrap_or_else(|| Self {
+                gpu_rendering: default_gpu_rendering(),
+                ..Self::default()
+            });
         if layout.notification_sound.take() == Some(false) {
             layout.adjust_each_sound = true;
             layout.each_sound.insert(Sound::Message, 0);
