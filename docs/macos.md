@@ -60,3 +60,9 @@ Sur le service Discord réel : authentification, liste des serveurs et lecture d
 - Pas de promesse de mémoire ou de vitesse en appel : les mesures locales sur l’aperçu ne couvrent pas cet usage.
 
 Ne pas placer de jeton dans le dépôt, un argument de commande ou une capture. Le probe de développement accepte `store-token --stdin` pour lire un secret via un pipe.
+
+## Validation du 7 novembre 2026
+
+Le paquet Apple Silicon a passé `scripts/check --release` : 902 tests Rust, Clippy sans avertissement, compilation et contrôle de démarrage. Les tests contre le faux serveur ont passé 64 scénarios supplémentaires avec `YAPFAST_TEST_PROFILE=release`. Les tests natifs avec sanitizers passent également.
+
+Le paquet installé dans Applications a été ouvert depuis le Finder : écran de connexion, aperçu local, Settings et Voice & video vérifiés. Les bibliothèques chargées viennent toutes de macOS ; aucun chemin Homebrew n’est requis à l’exécution. L’archive a été vérifiée après compression.
