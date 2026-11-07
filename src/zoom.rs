@@ -41,6 +41,7 @@ pub struct Keys {
     control: bool,
     alt: bool,
     shift: bool,
+    command: bool,
     /// Scrolling not yet worth a step, in pixels; positive scrolls up.
     scrolled: f64,
     /// The keys whose press zoomed, so their release is kept from Slint too.
@@ -58,6 +59,15 @@ pub enum Outcome {
 }
 
 impl Keys {
+    /// Use the logical comma: its physical key differs on AZERTY keyboards.
+    pub fn settings_shortcut(&self, key: &Key) -> bool {
+        self.command
+            && !self.control
+            && !self.alt
+            && !self.shift
+            && matches!(key, Key::Character(text) if text == ",")
+    }
+
     /// Ctrl is held, without Alt or Shift.
     pub fn control_only(&self) -> bool {
         self.control && !self.alt && !self.shift
@@ -75,6 +85,7 @@ impl Keys {
                 self.control = modifiers.state().control_key();
                 self.alt = modifiers.state().alt_key();
                 self.shift = modifiers.state().shift_key();
+                self.command = modifiers.state().super_key();
                 if !self.control {
                     self.scrolled = 0.;
                 }
@@ -132,6 +143,7 @@ impl Keys {
                 self.control = false;
                 self.alt = false;
                 self.shift = false;
+                self.command = false;
                 self.scrolled = 0.;
                 Outcome::Pass
             }
@@ -252,6 +264,26 @@ mod tests {
         assert_eq!(saved(Some(1.25)), 1.25);
         assert_eq!(saved(Some(1.33)), 1.);
         assert_eq!(saved(None), 1.);
+    }
+
+    #[test]
+    fn settings_uses_command_and_the_layouts_comma_and_releases_on_blur() {
+        use slint::winit_030::winit::keyboard::ModifiersState;
+        let mut keys = Keys::default();
+        let comma = Key::Character(",".into());
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::SUPER | ModifiersState::ALT,
+            ModifiersState::SUPER | ModifiersState::SHIFT,
+        ] {
+            keys.event(&WindowEvent::ModifiersChanged(modifiers.into()));
+            assert!(!keys.settings_shortcut(&comma));
+        }
+        keys.event(&WindowEvent::ModifiersChanged(ModifiersState::SUPER.into()));
+        assert!(keys.settings_shortcut(&comma));
+        assert!(!keys.settings_shortcut(&Key::Character("m".into())));
+        keys.event(&WindowEvent::Focused(false));
+        assert!(!keys.settings_shortcut(&comma));
     }
 
     #[test]

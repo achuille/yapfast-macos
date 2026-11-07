@@ -161,6 +161,7 @@ url = "2"
 webrtc-sys = { path = "vendor/webrtc-sys" }
 i-slint-core = { path = "vendor/i-slint-core" }
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }
 # Slint's master until 1.19 is released: its generated code compiles in half
 # the time, or better. See docs/building.md.
 slint = { git = "https://github.com/slint-ui/slint", rev = "ac7d423f294ae12bda32c577b075a0f139457d1d" }
@@ -178,6 +179,7 @@ const_panic = { git = "https://github.com/jplatte/const_panic", rev = "e0b317a9a
 [patch."https://github.com/slint-ui/slint"]
 i-slint-core = { path = "vendor/i-slint-core" }
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }
 
 [profile.dev]
 debug = "line-tables-only"

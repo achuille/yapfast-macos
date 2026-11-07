@@ -3524,7 +3524,6 @@ dependencies = [
 [[package]]
 name = "i-slint-backend-winit"
 version = "1.19.0"
-source = "git+https://github.com/slint-ui/slint?rev=ac7d423f294ae12bda32c577b075a0f139457d1d#ac7d423f294ae12bda32c577b075a0f139457d1d"
 dependencies = [
  "accesskit",
  "accesskit_winit",

@@ -142,5 +142,10 @@ pub fn make_metal_context(
         })?
     };
 
-    skia_safe::gpu::direct_contexts::make_metal(&backend, None)
+    let mut context = skia_safe::gpu::direct_contexts::make_metal(&backend, None)?;
+    // Skia's default retains up to 256 MiB of recyclable GPU resources.
+    // Metal uses unified memory on Apple Silicon; keep this chat UI's cache
+    // small. Resources still needed by the current frame remain usable.
+    context.set_resource_cache_limit(32 * 1024 * 1024);
+    Some(context)
 }

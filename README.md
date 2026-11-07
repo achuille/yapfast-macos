@@ -8,13 +8,13 @@ Discord dans une app native en Rust.
 
 ## Installer
 
-[Télécharger la version Mac](https://github.com/achuille/yapfast-macos/releases/tag/v0.3.0-macos.1), décompresser, puis glisser **Yapfast.app** dans Applications.
+[Télécharger la version Mac](https://github.com/achuille/yapfast-macos/releases/tag/v0.3.0-macos.2), décompresser, puis glisser **Yapfast.app** dans Applications.
 
 Apple Silicon · macOS 13+ · version expérimentale, non notarisée par Apple.
 
 ## Sur Mac
 
-Rendu Metal, audio CoreAudio, vidéos H.264 et AAC via les composants de macOS. Session dans le Trousseau, presse-papiers et raccourcis Cmd.
+Rendu Metal, audio CoreAudio, vidéos H.264 et AAC via les composants de macOS. Session dans le Trousseau, presse-papiers et raccourcis Cmd. **⌘,** ouvre les réglages.
 
 Connexion et lecture des conversations vérifiées sur un compte de test. Les appels réels et le partage d’écran restent à valider. Caméra, notifications, barre de menus, démarrage à la connexion et partage du son des applications restent à porter.
 

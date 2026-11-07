@@ -144,6 +144,7 @@ mod tests {
 
     #[test]
     fn an_emoji_becomes_a_picture_of_the_size_the_display_needs() {
+        i_slint_backend_testing::init_no_event_loop();
         let drawn = picture("🍕", 36., 1.).expect("the system emoji font draws a pizza");
         assert_eq!(
             (drawn.size().width, drawn.size().height),

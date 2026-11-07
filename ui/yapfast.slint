@@ -1585,7 +1585,7 @@ export component YapfastWindow inherits Window {
     // The device menus open above the toggle whose caret was clicked.
     property <length> menu-x;
     property <length> menu-y;
-    function open-settings() { input-menu.close(); output-menu.close(); root.settings-section = 1; root.settings-open = true; root.refresh-devices(); }
+    public function open-settings() { input-menu.close(); output-menu.close(); root.settings-section = 1; root.settings-open = true; root.refresh-devices(); }
     property <bool> input-open: input-menu.is-open;
     property <bool> output-open: output-menu.is-open;
     changed input-open => { root.input-level = 0; root.meter-note = ""; root.metering(root.input-open); }

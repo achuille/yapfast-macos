@@ -50,8 +50,13 @@ with (contents / 'Info.plist').open('wb') as f:
     plistlib.dump(info, f)
 for name in ['LICENSE', 'README.md']:
     shutil.copy2(root / name, contents / 'Resources' / name)
-# Ad-hoc signing allows local execution; distribution needs Developer ID + notarization.
-subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
+# Apple Development / Developer ID signing preserves Keychain's team identity
+# across builds. A self-signed certificate does not fix its cdhash partitions.
+identity = os.environ.get('YAPFAST_SIGNING_IDENTITY', '-')
+if not identity:
+    raise SystemExit('Empty signing identity; refusing an accidental ad-hoc fallback.')
+# A missing configured identity fails codesign, rather than changing the app's identity.
+subprocess.run(['codesign', '--force', '--sign', identity, str(app)], check=True)
 subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
 archive = out / f'Yapfast-{version}-macOS-{subprocess.check_output(["uname", "-m"], text=True).strip()}.zip'
 subprocess.run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(archive)], check=True)

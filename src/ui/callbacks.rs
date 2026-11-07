@@ -99,6 +99,8 @@ fn fill_shown_glyphs(window: &YapfastWindow, adapter: &mut Adapter, first: usize
         .collect();
     let pictures = &adapter.app.state.pictures;
     adapter.animations.also(shown, pictures);
+    adapter.animations.run(window, pictures);
+    adapter.sync_emoji_clock(window);
 }
 
 /// Takes the pictures [`fill_shown_glyphs`] gave back from the rows over

@@ -33,6 +33,7 @@ pub fn family() -> &'static str {
             prefer_families(&mut shared_collection(), &WINDOWS_FALLBACK);
             "Segoe UI Emoji"
         } else if cfg!(target_os = "macos") {
+            prefer_families(&mut shared_collection(), &MACOS_FALLBACK);
             "Apple Color Emoji"
         } else if register_color_font() {
             REGISTERED
@@ -380,6 +381,16 @@ const WINDOWS_FALLBACK: [&str; 5] = [
     "Segoe UI Symbol",
     "Cambria Math",
     "Segoe UI Historic",
+];
+
+// Common-script characters do not get a script fallback from Fontique on
+// macOS either. These system fonts cover symbols, mathematical alphabets and
+// Japanese punctuation (including U+30FB in otherwise Latin channel names).
+const MACOS_FALLBACK: [&str; 4] = [
+    "Apple Color Emoji",
+    "Apple Symbols",
+    "STIX Two Math",
+    "Hiragino Sans",
 ];
 
 /// Put the installed ones of `names` first, in their order, in the generic
@@ -802,5 +813,32 @@ mod tests {
             order(&mut collection, fontique::GenericFamily::SystemUi),
             [emoji, symbols]
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_fallback_covers_channel_punctuation_and_styled_letters() {
+        let mut collection = fontique::Collection::new(fontique::CollectionOptions {
+            shared: false,
+            system_fonts: true,
+        });
+        prefer_families(&mut collection, &MACOS_FALLBACK);
+        let mut sources = fontique::SourceCache::default();
+        for character in "・·•│→é𝘾𝙍𝓯𝐏中あ".chars() {
+            let mut query = collection.query(&mut sources);
+            query.set_families([fontique::QueryFamily::Generic(
+                fontique::GenericFamily::SansSerif,
+            )]);
+            let mut found = false;
+            query.matches_with(|font| {
+                if font.charmap().and_then(|map| map.map(character)).is_some() {
+                    found = true;
+                    fontique::QueryStatus::Stop
+                } else {
+                    fontique::QueryStatus::Continue
+                }
+            });
+            assert!(found, "missing {character} (U+{:04X})", character as u32);
+        }
     }
 }

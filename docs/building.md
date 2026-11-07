@@ -234,7 +234,11 @@ dependency in Cargo.toml:
   restores a minimized window at its old size without its pixels, which
   partial rendering left black. On Direct3D 12 it also hands each frame back
   in the `PRESENT` state, which `Present` requires and wgpu can't see is
-  missing.
+  missing. On Metal, the recyclable GPU resource cache has a 32 MiB budget.
+- `i-slint-backend-winit`: Slint's backend at `ac7d423f`. On macOS 14 and later its
+  display link pauses while the native window is occluded, keeping the frame pending
+  until the window is exposed. Retrying an unavailable Metal drawable at the
+  display's refresh rate otherwise keeps an idle window using CPU.
 - `matrix-rtc-livekit`: Element's matrix-rust-rtc at `5831af8`, with native
   audio tracks and cancellable joins.
 - `webrtc-sys`: webrtc-sys 0.3.35 with a Windows link fix, capture leveling,
@@ -262,7 +266,7 @@ libva, NVIDIA's driver and AMD's AMF runtime only when an encoder opens.
 Its `README.yapfast.md` explains the rest. Targets without a `gen/` folder build without hardware
 encoding or H265 decoding.
 
-Each has a `README.yapfast.md` with its changes, except the two Slint crates, which
+Each has a `README.yapfast.md` with its changes, except the Slint crates, which
 this section describes. The Slint crates keep their `.rs` files at the crate
 root, with no `src/`, both in `vendor/` and in Cargo's registry.
 

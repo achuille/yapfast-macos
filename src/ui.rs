@@ -462,6 +462,12 @@ fn watch_window(window: &YapfastWindow, adapter: &Rc<RefCell<Adapter>>) {
                             attention(&window, false);
                         }
                     }
+                    let (adapter, weak) = (adapter.clone(), weak.clone());
+                    slint::Timer::single_shot(Duration::ZERO, move || {
+                        if let (Some(adapter), Some(window)) = (adapter.upgrade(), weak.upgrade()) {
+                            adapter.borrow_mut().sync_emoji_clock(&window);
+                        }
+                    });
                 }
                 if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
                     #[cfg(windows)]
@@ -517,6 +523,23 @@ fn watch_window(window: &YapfastWindow, adapter: &Rc<RefCell<Adapter>>) {
                                 }
                             });
                         }
+                    }
+                    return EventResult::PreventDefault;
+                }
+                if cfg!(target_os = "macos")
+                    && let WindowEvent::KeyboardInput { event: key, .. } = event
+                    && key.state == ElementState::Pressed
+                    && keys.settings_shortcut(&key.logical_key)
+                    && let Some(window) = weak.upgrade()
+                    && window.get_workspace()
+                {
+                    if !key.repeat && !window.get_settings_open() {
+                        let weak = weak.clone();
+                        slint::Timer::single_shot(Duration::ZERO, move || {
+                            if let Some(window) = weak.upgrade() {
+                                window.invoke_open_settings();
+                            }
+                        });
                     }
                     return EventResult::PreventDefault;
                 }

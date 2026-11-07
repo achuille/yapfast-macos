@@ -413,7 +413,8 @@ impl Animations {
 
     /// Keeps the frames that arrived, and gives the registry each emoji's
     /// animation, so text and the picker draw them from now on.
-    pub(super) fn drain(&mut self) {
+    pub(super) fn drain(&mut self) -> bool {
+        let mut changed = false;
         while let Ok(decoded) = self.decoded.try_recv() {
             self.decoding.remove(&decoded.key);
             if decoded.frames.is_empty() {
@@ -437,7 +438,9 @@ impl Animations {
             i_slint_core::yapfast_emoji::insert(&decoded.key, decoded.glyph, animation);
             self.cache.insert(decoded.key, decoded.glyph, frames);
             self.cache.evict();
+            changed = true;
         }
+        changed
     }
 
     /// Takes what arrived from the decoders, starts what is wanted next, and
@@ -445,11 +448,12 @@ impl Animations {
     /// decode that finishes is seen at once rather than at the next change.
     pub(super) fn run(&mut self, window: &YapfastWindow, pictures: &HashMap<String, Arc<Picture>>) {
         self.start(pictures);
-        self.drain();
-        window
-            .global::<EmojiAnimations>()
-            .set_revision(i_slint_core::yapfast_emoji::revision() as i32);
-        window.window().request_redraw();
+        let changed = self.drain();
+        let revision = i_slint_core::yapfast_emoji::revision() as i32;
+        if changed || window.global::<EmojiAnimations>().get_revision() != revision {
+            window.global::<EmojiAnimations>().set_revision(revision);
+            window.window().request_redraw();
+        }
     }
 
     /// Sets whether the clock may move, and starts or stops the timer: it runs
@@ -463,9 +467,14 @@ impl Animations {
     ) {
         i_slint_core::yapfast_emoji::set_playing(playing);
         self.side = frame_side(window.window().scale_factor());
+        // Cached animations from a closed picker or another channel must not
+        // keep the window repainting. Paused animations need no timer either;
+        // only unfinished decodes still need to be collected.
+        let visible = self.cache.pinned.iter().any(|key| self.cache.contains(key))
+            || window.get_emoji_rows().row_count() > 0;
         let waiting = !self.decoding.is_empty()
             || self.queue.len() > 0
-            || !i_slint_core::yapfast_emoji::is_empty();
+            || (playing && visible && !i_slint_core::yapfast_emoji::is_empty());
         if !waiting {
             self.timer.stop();
             self.interval = 0;
@@ -491,16 +500,26 @@ impl Animations {
                 let now = std::time::Instant::now();
                 let delta = now.saturating_duration_since(clock.replace(now));
                 i_slint_core::yapfast_emoji::advance(delta);
-                let (Some(adapter), Some(window)) = (adapter.upgrade(), weak.upgrade()) else {
+                let (Some(owner), Some(window)) = (adapter.upgrade(), weak.upgrade()) else {
                     return;
                 };
-                let mut adapter = adapter.borrow_mut();
+                let mut adapter = owner.borrow_mut();
                 let Adapter {
                     app, animations, ..
                 } = &mut *adapter;
                 animations.run(&window, &app.state.pictures);
+                // A decode may have been the last pending work. Stop here,
+                // without waiting for another network event to refresh us.
+                adapter.sync_emoji_clock(&window);
             },
         );
+    }
+}
+
+impl Adapter {
+    pub(super) fn sync_emoji_clock(&mut self, window: &YapfastWindow) {
+        let playing = window.global::<Motion>().get_playing() && !self.is_inactive();
+        self.animations.sync(window, playing, self.weak.clone());
     }
 }
 
@@ -508,6 +527,49 @@ impl Animations {
 /// screen's scale, and never past the 96 that keeps the cache's budget useful.
 fn frame_side(scale: f32) -> u32 {
     (48.0 * scale.max(1.0)).round().clamp(48.0, 96.0) as u32
+}
+
+#[test]
+fn paused_emoji_does_not_keep_a_render_timer_running() {
+    i_slint_backend_testing::init_no_event_loop();
+    let window = YapfastWindow::new().unwrap();
+    let mut animations = Animations::new();
+    let frames = Rc::new(Frames::new(
+        vec![slint::SharedPixelBuffer::new(1, 1); 2],
+        &[50, 50],
+    ));
+    let key = "paused-timer-test";
+    i_slint_core::yapfast_emoji::insert(
+        key,
+        None,
+        Rc::new(i_slint_core::yapfast_emoji::Animation::new(
+            frames.images().to_vec(),
+            &[50, 50],
+        )),
+    );
+    animations.cache.insert(key.into(), None, frames);
+    animations.cache.pin([key]);
+    animations.sync(&window, true, Default::default());
+    assert!(animations.timer.running());
+    animations.sync(&window, false, Default::default());
+    let running = animations.timer.running();
+    assert!(
+        !running,
+        "an unfocused or idle window must stop the emoji clock"
+    );
+    animations.sync(&window, true, Default::default());
+    assert!(
+        animations.timer.running(),
+        "visible animations resume on focus"
+    );
+    animations.cache.pin([]);
+    animations.sync(&window, true, Default::default());
+    let running = animations.timer.running();
+    i_slint_core::yapfast_emoji::remove(key);
+    assert!(
+        !running,
+        "cached off-screen emoji must not keep the clock running"
+    );
 }
 
 /// An animation's frames at `side`, and how long each shows, decoded whole and
