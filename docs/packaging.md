@@ -1,7 +1,8 @@
 # Packaging and releases
 
-How the Linux and Windows releases are made and published. Building and
-checking Yapfast for development is in [building](building.md).
+This fork publishes macOS packages; see [macOS](macos.md) for installation,
+builds and release checks. The Linux and Windows packaging tools below are
+retained from [Yapfast](https://github.com/yapfast/yapfast).
 
 ## Linux AppImage
 
@@ -75,33 +76,6 @@ becomes `0.2.0nightly.20261020.5`, which pacman sorts after 0.1.0 and before
 0.2.0, as SemVer sorts the nightly; with a dot before `nightly`, pacman would
 sort it after 0.2.0. `sudo pacman -U` installs the file or its link; there's no
 repository, so `pacman -Syu` doesn't update it.
-
-## Nightly releases
-
-Releases are built locally, but a nightly of `main` builds on GitHub: Actions,
-Nightly, Run workflow. `.github/workflows/nightly.yml` names it after the next
-minor version, the day (UTC) and the workflow's run number, such as
-`v0.2.0-nightly.20261020.5`, and titles it as the stable releases are, with the
-commit: `Yapfast 0.2.0-nightly.20261020.5 (396abe2)`. The run number puts two
-nightlies of one day in order, as a commit hash wouldn't, and gives a second
-run on one commit a tag of its own. `scripts/set-version` writes that version
-into `Cargo.toml` and `Cargo.lock` before building, so the app reports it and
-the packages and `SOURCE.txt` name it. One job runs `scripts/build-appimage`
-and `scripts/package-arch`, and another `scripts/build-windows` in the Windows shell, with the Windows Skia
-build, cargo-xwin's MSVC files and the compiled Rust dependencies
-(`Swatinem/rust-cache`) cached between runs. The Linux build has no cache: it
-compiles in the Nix sandbox, which can't reach one. The last job publishes the
-AppImage, its `.zsync` file, the Arch package, the Windows ZIP, the source snapshot and
-`SHA256SUMS.txt` as a prerelease on that commit. Wine doesn't start on the
-runner, so there's no installer. The release's notes list the commits since the
-previous nightly, or the latest release, each with its author's GitHub account:
-features and fixes by their Conventional Commit type, the rest folded away
-(`.github/nightly-notes.jq`). Every nightly stays on the releases page. Both
-builds zip the source snapshot with the commit's time on every file, so they
-make the same file, and the release carries one. A prerelease is never
-`latest`, so the AppImage's update information leaves stable installs on stable
-releases, and takes a nightly AppImage to the latest stable release, not the
-next nightly.
 
 ## The app icon
 

@@ -1,18 +1,61 @@
-name: macOS
+name: macOS release
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (v0.3.0-macos.3)
+        required: true
 permissions:
   contents: read
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
 jobs:
-  build:
+  release:
+    if: github.repository == 'achuille/yapfast-macos'
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    env:
+      YAPFAST_RELEASE_TAG: ${{ inputs.tag }}
+      CARGO_BUILD_JOBS: 1
+      CARGO_PROFILE_RELEASE_STRIP: none
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
     steps:
       - uses: actions/checkout@v5
-      - run: brew install cmake ninja pkgconf nasm
-      - run: scripts/build-macos
-      - uses: actions/upload-artifact@v4
         with:
-          name: Yapfast-macOS
-          path: target/macos/*.zip
-          if-no-files-found: error
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Validate release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$YAPFAST_RELEASE_TAG^{commit}")"
+          python3 scripts/release-notes.py "${YAPFAST_RELEASE_TAG#v}" > "$RUNNER_TEMP/release.md"
+          if gh release view "$YAPFAST_RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'This release already exists.' >&2
+            exit 1
+          fi
+      - run: brew install cmake ninja pkgconf nasm python
+      - name: Check
+        shell: bash
+        run: |
+          export CARGO_TARGET_DIR="$HOME/.local/share/yapfast-build/target"
+          source scripts/release-env "$(rustc -vV | sed -n 's/^host: //p')"
+          scripts/check --release --matrix
+          scripts/check-macos-native
+      - run: scripts/build-macos
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          version=${YAPFAST_RELEASE_TAG#v}
+          git archive --format=zip --prefix="yapfast-macos-$version/" HEAD > "target/macos/Yapfast-$version-source.zip"
+          (cd target/macos && shasum -a 256 ./*.dmg ./*.zip > SHA256SUMS.txt)
+          gh release create "$YAPFAST_RELEASE_TAG" target/macos/*.dmg target/macos/*.zip target/macos/SHA256SUMS.txt \
+            --verify-tag --title "Yapfast $version" --notes-file "$RUNNER_TEMP/release.md" --latest

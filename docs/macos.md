@@ -72,4 +72,6 @@ Never put session tokens in source, command arguments or screenshots. The develo
 
 macOS packaging revisions use `v<app-version>-macos.<revision>`. The executable keeps its upstream version; the DMG filename carries the full release version. Existing tags and release assets are not replaced. Each release includes a DMG, ZIP, source archive and SHA-256 checksums.
 
+Commit a changelog entry, create an annotated tag and push it. In GitHub Actions, run **macOS release** with that tag. The workflow checks, builds and publishes the DMG, ZIP, source and checksums. It fails if a release already exists. Local builds use `YAPFAST_RELEASE_TAG` for the same filenames.
+
 See the [changelog](../CHANGELOG.md) for release history and [build documentation](building.md) for dependency patches.
