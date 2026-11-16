@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+packaging_env="${YAPFAST_PACKAGING_ENV:-$HOME/.local/share/yapfast-packaging}"
+if [[ ! -x "$packaging_env/bin/python3" ]]; then
+  python3 -m venv "$packaging_env"
+fi
+"$packaging_env/bin/python3" -m pip install --quiet --disable-pip-version-check -r packaging/macos/requirements.txt
+exec "$packaging_env/bin/python3" scripts/package-dmg.py "$@"

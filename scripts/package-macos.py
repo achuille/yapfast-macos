@@ -4,6 +4,7 @@ import argparse
 import os
 import pathlib
 import plistlib
+import re
 import shutil
 import subprocess
 import tomllib
@@ -12,11 +13,16 @@ import tempfile
 root = pathlib.Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--profile', choices=['release', 'fast', 'measure'], default='release')
-profile = parser.parse_args().profile
-binary = pathlib.Path(os.environ.get('CARGO_TARGET_DIR', root / 'target')) / profile / 'yapfast'
+parser.add_argument('--binary', type=pathlib.Path, help='Reuse a previously verified executable')
+args = parser.parse_args()
+profile = args.profile
+binary = args.binary or pathlib.Path(os.environ.get('CARGO_TARGET_DIR', root / 'target')) / profile / 'yapfast'
 if not binary.is_file():
     raise SystemExit('Run scripts/build-macos first.')
 version = tomllib.loads((root / 'Cargo.toml').read_text())['package']['version']
+release = os.environ.get('YAPFAST_RELEASE_TAG', 'v' + version).removeprefix('v')
+if not re.fullmatch(re.escape(version) + r'(?:-macos\.\d+)?', release):
+    raise SystemExit('Release tag must match the app version.')
 out = root / 'target' / ('macos' if profile == 'release' else f'macos-{profile}')
 app = out / 'Yapfast.app'
 contents = app / 'Contents'
@@ -42,10 +48,10 @@ with tempfile.TemporaryDirectory(prefix='yapfast-icon-') as scratch:
 info = dict(CFBundleIconFile='Yapfast.icns', CFBundleName='Yapfast', CFBundleDisplayName='Yapfast',
     CFBundleIdentifier='io.github.achuille.yapfast', CFBundleExecutable='yapfast',
     CFBundlePackageType='APPL', CFBundleShortVersionString=version,
-    CFBundleVersion=version, LSMinimumSystemVersion='13.0',
+    CFBundleVersion=version, YapfastReleaseVersion=release, LSMinimumSystemVersion='13.0',
     NSHighResolutionCapable=True,
-    NSMicrophoneUsageDescription='Yapfast utilise le micro pour les appels Discord.',
-    NSCameraUsageDescription='Yapfast utilise la caméra pendant les appels vidéo.')
+    NSMicrophoneUsageDescription='Yapfast uses your microphone for Discord calls.',
+    NSCameraUsageDescription='Yapfast uses your camera for video calls.')
 with (contents / 'Info.plist').open('wb') as f:
     plistlib.dump(info, f)
 for name in ['LICENSE', 'README.md']:
@@ -58,7 +64,7 @@ if not identity:
 # A missing configured identity fails codesign, rather than changing the app's identity.
 subprocess.run(['codesign', '--force', '--sign', identity, str(app)], check=True)
 subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
-archive = out / f'Yapfast-{version}-macOS-{subprocess.check_output(["uname", "-m"], text=True).strip()}.zip'
+archive = out / f'Yapfast-{release}-macOS-{subprocess.check_output(["uname", "-m"], text=True).strip()}.zip'
 subprocess.run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(app), str(archive)], check=True)
 print(app)
 print(archive)

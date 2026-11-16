@@ -16,3 +16,8 @@ done
 source scripts/release-env "$(rustc -vV | sed -n 's/^host: //p')"
 cargo build --locked --release --bin yapfast
 python3 scripts/package-macos.py
+
+version=${YAPFAST_RELEASE_TAG:-}
+version=${version#v}
+if [[ -z $version ]]; then version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])'); fi
+scripts/build-dmg target/macos/Yapfast.app --version "$version"
