@@ -35,6 +35,8 @@ directories.workspace = true
 futures-util.workspace = true
 # Decode received images with bounded dimensions before the UI sees them.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+# Discord's large badge pictures are SVGs; Slint already builds it.
+resvg = { version = "0.49", default-features = false }
 # An animated GIF's frame timings, read without decoding its pictures; the
 # version the image crate decodes with.
 gif = "0.14"
@@ -88,6 +90,8 @@ cc = "1"
 webrtc-sys-build = "0.3.18"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Real-time priority for the audio threads.
+libc = "0.2"
 # The input meter reads the microphone locally through PulseAudio, the sound
 # server WebRTC already uses on Linux, without involving a call.
 libpulse-binding = { version = "2", default-features = false }

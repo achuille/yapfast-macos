@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1-macos.1 - 2026-11-16
+
+### Changed
+
+- Updated to [Yapfast 0.4.1](https://github.com/yapfast/yapfast/releases/tag/v0.4.1).
+- Adapted the new emoji text shaping to CoreText, including joined emoji.
+- Update checks now use this port's releases. Installation remains manual.
+- Bundled font, emoji and dependency licenses with the app.
+
+### Fixed
+
+- Key combinations recognize either Command key on macOS.
+
 ## 0.3.0-macos.3 - 2026-11-16
 
 ### Added

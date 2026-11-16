@@ -73,6 +73,12 @@ def dependency_notices(metadata, package, licenses, skia_archive, skia_source, w
     paths relative to package."""
     dependencies = []
     licenses.mkdir()
+    font_notices = licenses / "fonts"
+    font_notices.mkdir()
+    for path in sorted((ROOT / "ui/fonts").iterdir()):
+        if license_file(path) or path.name == "README.md":
+            shutil.copy2(path, font_notices / path.name)
+    shutil.copy2(ROOT / "src/LICENSE-emojibase.txt", licenses / "LICENSE-emojibase.txt")
     for item in sorted(metadata["packages"], key=lambda value: (value["name"], value["version"])):
         if item["name"] == "yapfast":
             continue
@@ -92,14 +98,8 @@ def dependency_notices(metadata, package, licenses, skia_archive, skia_source, w
             "name": item["name"], "version": item["version"], "license": item["license"],
             "source": item["source"], "repository": item["repository"], "license_files": copied,
         })
-    with tarfile.open(skia_archive) as native:
-        for member in native.getmembers():
-            if member.isfile() and Path(member.name).name.upper().startswith(("LICENSE", "COPYING", "NOTICE")):
-                notice_file = native.extractfile(member)
-                if notice_file is None:
-                    continue
-                with notice_file as notice:
-                    (licenses / ("skia-native-" + Path(member.name).name)).write_bytes(notice.read())
+    if skia_archive is not None:
+        copy_skia_archive_notices(skia_archive, licenses)
     for notice in skia_source.rglob("*"):
         if license_file(notice):
             destination = licenses / "skia-source" / notice.relative_to(skia_source)
@@ -128,3 +128,14 @@ def dependency_notices(metadata, package, licenses, skia_archive, skia_source, w
         if path.is_file():
             path.chmod(0o644)
     return dependencies
+
+
+def copy_skia_archive_notices(skia_archive, licenses):
+    with tarfile.open(skia_archive) as native:
+        for member in native.getmembers():
+            if member.isfile() and Path(member.name).name.upper().startswith(("LICENSE", "COPYING", "NOTICE")):
+                notice_file = native.extractfile(member)
+                if notice_file is None:
+                    continue
+                with notice_file as notice:
+                    (licenses / ("skia-native-" + Path(member.name).name)).write_bytes(notice.read())

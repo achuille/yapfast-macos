@@ -131,13 +131,15 @@ impl Application {
             return self.discord_channel_choices(id, &listed);
         }
         let mut listed = listed;
-        // A one-to-one Discord DM's menu invites its person.
+        // A one-to-one Discord DM's menu invites its person, and offers
+        // the apps' user commands for them once the DM's index came.
         if let Some(person) = self.state.rooms.iter().find_map(|room| {
             (room.id == id && room.direct && !room.request && room.network == Network::Discord)
                 .then_some(room.person.as_deref())
                 .flatten()
         }) {
             self.offer_invite(person, &mut listed);
+            self.offer_apps(id, person, &mut listed);
         }
         listed
     }
@@ -291,6 +293,15 @@ impl Application {
         }
     }
 
+    /// Whether this account may create a channel in a category, for the "+" on
+    /// its heading.
+    pub fn may_create_channel(&self, category: &str) -> bool {
+        !category.is_empty()
+            && !self.state.preview
+            && self.state.is_category(category)
+            && self.manages(category)
+    }
+
     /// Whether this account may make, change and delete channels in a
     /// Discord server, category or channel, while Discord takes it.
     fn manages(&self, place: &str) -> bool {
@@ -405,7 +416,9 @@ impl Application {
 
     /// Whether this account is in a Discord thread, by its room id; none for
     /// a room that isn't a thread Yapfast knows.
-    fn thread_joined(&self, room: &str) -> Option<bool> {
+    /// Whether this account is in a Discord thread, and whether it's
+    /// archived; none for a room that isn't a thread.
+    pub(super) fn thread_state(&self, room: &str) -> Option<(bool, bool)> {
         #[cfg(feature = "discord")]
         {
             let (guild, channel) = discord::parse_room(room)?;
@@ -415,13 +428,17 @@ impl Application {
                 .channel(channel)?
                 .thread
                 .as_ref()
-                .map(|thread| thread.joined)
+                .map(|thread| (thread.joined, thread.archived))
         }
         #[cfg(not(feature = "discord"))]
         {
             let _ = room;
             None
         }
+    }
+
+    fn thread_joined(&self, room: &str) -> Option<bool> {
+        self.thread_state(room).map(|(joined, _)| joined)
     }
 
     /// What a Discord thread header's More menu offers, by its room id, as

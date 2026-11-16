@@ -21,6 +21,8 @@ The Rust toolchain is pinned. Allow at least 25 GB of free space for a fresh bui
 
 The app, ZIP and DMG go in `target/macos`. The DMG builder installs its pinned Python dependencies in `~/.local/share/yapfast-packaging`. It creates a read-only image containing the app and an Applications shortcut.
 
+The app includes font, emoji and dependency notices in `Contents/Resources/licenses`, with a `THIRD-PARTY.json` index.
+
 To sign with an existing Apple identity:
 
 ```sh
@@ -37,7 +39,9 @@ A missing identity fails the build; it does not fall back to ad hoc signing. Kee
 - CoreAudio uses three reusable output buffers and bounds microphone capture to one second. Audio threads wait for callbacks.
 - VideoToolbox decodes H.264 8-bit 4:2:0 files and Annex B streams. File playback reorders B-frames; real-time streams do not wait for reordering.
 - AudioToolbox decodes AAC and removes priming samples. VP8, VP9 and AV1 use the existing decoders.
-- System fonts cover color emoji, Japanese punctuation such as `・` and styled letters such as `𝘾𝙍𝐏`.
+- Twemoji supplies color emoji, including joined sequences. System fonts cover Japanese punctuation such as `・` and styled letters such as `𝘾𝙍𝐏`.
+- Voice keybinds work while Yapfast has focus. Combinations accept either Command, Control, Option or Shift key.
+- About checks this port's releases. Download and install updates from the release page; the app does not replace itself on macOS.
 - Metal’s recyclable resource cache has a 32 MiB budget. Active textures may exceed it; this is not a cap on total app memory.
 - Paused and cached off-screen emoji do not keep a render timer running. On macOS 14+, the display link pauses while the window is occluded and resumes pending drawing when exposed.
 - WebRTC’s Objective-C categories are linked into the executable so audio settings can open.
@@ -70,7 +74,7 @@ Never put session tokens in source, command arguments or screenshots. The develo
 
 ## Releases
 
-macOS packaging revisions use `v<app-version>-macos.<revision>`. The executable keeps its upstream version; the DMG filename carries the full release version. Existing tags and release assets are not replaced. Each release includes a DMG, ZIP, source archive and SHA-256 checksums.
+macOS packaging revisions use `v<app-version>-macos.<revision>`. Cargo keeps the upstream base version; release builds show the full macOS version in About and use it in archive filenames. Existing tags and release assets are not replaced. Each release includes a DMG, ZIP, source archive and SHA-256 checksums.
 
 Commit a changelog entry, create an annotated tag and push it. In GitHub Actions, run **macOS release** with that tag. The workflow checks, builds and publishes the DMG, ZIP, source and checksums. It fails if a release already exists. Local builds use `YAPFAST_RELEASE_TAG` for the same filenames.
 

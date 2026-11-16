@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (v0.3.0-macos.3)
+        description: Existing release tag (v0.4.1-macos.1)
         required: true
 permissions:
   contents: read
@@ -47,6 +47,7 @@ jobs:
           source scripts/release-env "$(rustc -vV | sed -n 's/^host: //p')"
           scripts/check --release --matrix
           scripts/check-macos-native
+          python3 -m unittest testing/test_font_notices.py
       - run: scripts/build-macos
       - name: Publish
         env:

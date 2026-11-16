@@ -12,7 +12,6 @@ use crate::{
     client,
     limits::{self, Limits, Refusals, Stopped},
     mfa, scheduled_event,
-    settings::{self, CustomStatus},
 };
 
 const API: &str = "https://discord.com/api/v9";
@@ -186,6 +185,28 @@ impl Refused {
     }
 }
 
+/// Part of a file from [`Api::download_part`], its bytes as they arrive.
+pub struct FilePart<S> {
+    /// Where its bytes start in the file: 0 when the server sent the whole
+    /// file in place of the part asked for.
+    pub start: u64,
+    /// The whole file's size, when the server says.
+    pub size: Option<u64>,
+    pub chunks: S,
+}
+
+/// A `Content-Range` header's first byte and the file's whole size, when it
+/// gives one: `bytes 100-199/1000` or `bytes 100-199/*`.
+fn content_range(value: &str) -> Option<(u64, Option<u64>)> {
+    let (range, size) = value.strip_prefix("bytes ")?.split_once('/')?;
+    let start = range.split_once('-')?.0.trim().parse().ok()?;
+    let size = match size.trim() {
+        "*" => None,
+        size => Some(size.parse().ok()?),
+    };
+    Some((start, size))
+}
+
 /// A download larger than it was allowed to be.
 #[derive(Debug)]
 pub struct TooLarge;
@@ -264,7 +285,7 @@ pub struct Api {
     /// Empty without a login; Discord may refresh it in READY.
     token: RwLock<String>,
     /// The API's base URL: Discord's, or the test server's.
-    base: String,
+    pub(crate) base: String,
     limits: Limits,
     refusals: Refusals,
     /// Downloads going at once, so opening the emoji picker or a busy channel
@@ -354,11 +375,19 @@ impl Api {
 
     fn request(&self, method: Method, path: &str) -> RequestBuilder {
         // Only the API gets the client's description, as in the web client;
-        // it changes through a run, so each request makes it again.
+        // it changes through a run, so each request makes it again. The
+        // web client sends its language and time zone with every request
+        // too, and a request without them looks less like it.
         let request = self
             .http
             .request(method, format!("{}{path}", self.base))
-            .header("X-Super-Properties", client::super_properties());
+            .header("X-Super-Properties", client::super_properties())
+            .header(header::ACCEPT_LANGUAGE, client::ACCEPT_LANGUAGE)
+            .header("X-Discord-Locale", client::LOCALE);
+        let request = match client::timezone() {
+            Some(zone) => request.header("X-Discord-Timezone", zone),
+            None => request,
+        };
         // A request sent again once confirmed carries what confirmed it.
         let request = match mfa::token() {
             Some(confirmed) => request.header("X-Discord-MFA-Authorization", confirmed),
@@ -517,6 +546,20 @@ impl Api {
         }
     }
 
+    /// The signed-in account uses a bot's message component, submits its
+    /// modal, runs an app's command or asks for an autocomplete's choices.
+    /// Discord acknowledges this request before the app responds over the
+    /// gateway; a successful HTTP response alone is not the app's result.
+    /// Files go uploaded first, named in the body's `data.attachments`.
+    ///
+    /// After a 429 it goes again once, as Discord's client sends commands
+    /// and forms again, only with `again`: the client drops a click or an
+    /// autocomplete that was limited.
+    pub async fn interact(&self, body: &Value, again: bool) -> Result<()> {
+        let request = with_json(self.request(Method::POST, "/interactions"), body);
+        self.send_request(request, again).await.map(drop)
+    }
+
     /// Sends a message, as a reply when `options` names one in the same
     /// channel, with uploaded files.
     pub async fn send(
@@ -559,6 +602,16 @@ impl Api {
     pub async fn send_poll(&self, channel: &str, poll: &NewPoll, nonce: &str) -> Result<Value> {
         let mut body = message_body("", nonce);
         body["poll"] = poll.body();
+        let path = format!("/channels/{channel}/messages");
+        self.json(with_json(self.request(Method::POST, &path), &body))
+            .await
+    }
+
+    /// Posts a sticker, a message with nothing else, as Discord's client
+    /// does when a sticker is clicked in its picker.
+    pub async fn send_sticker(&self, channel: &str, sticker: &str, nonce: &str) -> Result<Value> {
+        let mut body = message_body("", nonce);
+        body["sticker_ids"] = json!([sticker]);
         let path = format!("/channels/{channel}/messages");
         self.json(with_json(self.request(Method::POST, &path), &body))
             .await
@@ -627,6 +680,54 @@ impl Api {
         self.json(self.request(Method::GET, &path)).await
     }
 
+    /// The feed behind the member list's Activity panel, from where
+    /// `refresh_token` left off; see [`crate::activity_feed`].
+    pub async fn activity_feed(&self, refresh_token: Option<&str>) -> Result<Value> {
+        let mut path =
+            "/content-inventory/users/@me?for_game_profile=false&feature=inbox".to_owned();
+        if let Some(token) = refresh_token {
+            path.push_str(&format!("&refresh_token={}", encode(token)));
+        }
+        self.json(self.request(Method::GET, &path)).await
+    }
+
+    /// A user's levelling badges, with their levels and how far along they
+    /// are: `{"badges": [...]}`. The tooltips of a profile's badges show it.
+    pub async fn badges(&self, user: &str) -> Result<Value> {
+        self.json(self.request(Method::GET, &format!("/users/{user}/badges")))
+            .await
+    }
+
+    /// A shop product, such as the profile effect of a SKU, as the client
+    /// fetches it to show the effect.
+    pub async fn collectibles_product(&self, sku: &str) -> Result<Value> {
+        self.json(self.request(Method::GET, &format!("/collectibles-products/{sku}")))
+            .await
+    }
+
+    /// What someone did lately, as the client fetches it for their profile's
+    /// Activity tab: `{entries: [{content_type, extra, ...}]}`.
+    pub async fn outbox(&self, user: &str) -> Result<Value> {
+        let path = format!("/content-inventory/users/{user}/outbox");
+        self.json(self.request(Method::GET, &path)).await
+    }
+
+    /// Games by their ids, at most [`crate::widgets::GAMES_AT_ONCE`], as the
+    /// client fetches them for a profile's widgets: `[{id, name, media: {icon,
+    /// cover}, ...}]`, without those Discord doesn't know.
+    pub async fn games(&self, ids: &[&str]) -> Result<Value> {
+        let query: Vec<_> = ids.iter().map(|id| format!("game_ids={id}")).collect();
+        let path = format!("/games?{}", query.join("&"));
+        self.json(self.request(Method::GET, &path)).await
+    }
+
+    /// A wishlist, its owner's or anyone's, as the client fetches it for a
+    /// profile: `{id, user_id, wishlist_items: [{sku_id, sku_name, sku, ...}]}`.
+    pub async fn wishlist(&self, id: &str) -> Result<Value> {
+        let path = format!("/wishlists/{id}?source=user_profile");
+        self.json(self.request(Method::GET, &path)).await
+    }
+
     /// Applications' public objects, with their names and icons, as the
     /// client fetches them for activities: `[{id, name, icon, ...}]`.
     pub async fn public_applications(&self, ids: &[&str]) -> Result<Value> {
@@ -636,6 +737,25 @@ impl Api {
             .collect();
         let path = format!("/applications/public?{}", query.join("&"));
         self.json(self.request(Method::GET, &path)).await
+    }
+
+    /// The apps' commands under `resource`, `guilds/{id}`, `channels/{id}`
+    /// or `users/@me`: `{applications, application_commands, version}`, or
+    /// None while Discord is still building it and answers 202, as its
+    /// client then asks again a while later. See [`crate::commands`].
+    pub async fn command_index(&self, resource: &str) -> Result<Option<Value>> {
+        let path = format!("/{resource}/application-command-index");
+        let response = self.execute(self.request(Method::GET, &path)).await?;
+        if response.status() == StatusCode::ACCEPTED {
+            return Ok(None);
+        }
+        let body = response
+            .bytes()
+            .await
+            .context("could not read Discord's answer")?;
+        Ok(Some(
+            serde_json::from_slice(&body).context("could not understand Discord's answer")?,
+        ))
     }
 
     /// The message that each of up to 25 message requests is waiting with,
@@ -746,6 +866,18 @@ impl Api {
         // Days since Discord's epoch.
         let days = (crate::message::snowflake_at(now) >> 22) / 86_400_000;
         let body = json!({"token": null, "last_viewed": days});
+        self.json(with_json(self.request(Method::POST, &path), &body))
+            .await
+            .map(drop)
+    }
+
+    /// Marks a channel unread from the message after `message`, with
+    /// `mentions` of those after it calling on this account, as Mark Unread
+    /// in Discord's client does: a manual acknowledgement, which Discord
+    /// sends back as `MESSAGE_ACK` with `manual`.
+    pub async fn ack_manual(&self, channel: &str, message: &str, mentions: u64) -> Result<()> {
+        let path = format!("/channels/{channel}/messages/{message}/ack");
+        let body = json!({"manual": true, "mention_count": mentions});
         self.json(with_json(self.request(Method::POST, &path), &body))
             .await
             .map(drop)
@@ -1063,17 +1195,6 @@ impl Api {
             .await
     }
 
-    /// Sets the custom status, or clears it with `None`, in the account's settings.
-    pub async fn set_custom_status(&self, custom: Option<&CustomStatus>) -> Result<()> {
-        let body = json!({"settings": settings::write_custom(custom)});
-        self.json(with_json(
-            self.request(Method::PATCH, "/users/@me/settings-proto/1"),
-            &body,
-        ))
-        .await
-        .map(drop)
-    }
-
     /// The GIF picker's home: trending terms, each with a GIF, and trending GIFs.
     pub async fn gifs_trending(&self) -> Result<Value> {
         let path = format!(
@@ -1161,27 +1282,20 @@ impl Api {
         .map(drop)
     }
 
-    /// Sets the status: `online`, `idle`, `dnd` or `invisible`.
-    pub async fn set_status(&self, status: &str) -> Result<()> {
-        let body = json!({"settings": settings::write_status(status)});
-        self.json(with_json(
-            self.request(Method::PATCH, "/users/@me/settings-proto/1"),
-            &body,
-        ))
-        .await
-        .map(drop)
+    /// The services linked to this account, as READY's `connected_accounts`.
+    pub(crate) async fn connections(&self) -> Result<Value> {
+        self.json(self.request(Method::GET, "/users/@me/connections"))
+            .await
     }
 
-    /// Shares the game this account plays, everywhere it's signed in, or
-    /// stops sharing it.
-    pub async fn set_show_game(&self, shown: bool) -> Result<()> {
-        let body = json!({"settings": settings::write_show_game(shown)});
-        self.json(with_json(
-            self.request(Method::PATCH, "/users/@me/settings-proto/1"),
-            &body,
-        ))
-        .await
-        .map(drop)
+    /// A token for the linked Spotify account `id`, which Discord renews.
+    pub(crate) async fn spotify_access_token(&self, id: &str) -> Result<String> {
+        let path = format!("/users/@me/connections/spotify/{}/access-token", encode(id));
+        let answer = self.json(self.request(Method::GET, &path)).await?;
+        answer["access_token"]
+            .as_str()
+            .map(str::to_owned)
+            .context("Discord's answer had no token")
     }
 
     /// Ignores a friend request, cancels one, or ends a friendship.
@@ -1349,8 +1463,8 @@ impl Api {
         Ok(answer["phone"].as_str().unwrap_or_default().to_owned())
     }
 
-    /// A server's profile, as its settings' Server Profile page shows it:
-    /// its name, icon and description, among more.
+    /// A server's profile, as its settings' Server Profile page and a server
+    /// tag's card show it: its name, icon and description, among more.
     pub async fn server_profile(&self, guild: &str) -> Result<Value> {
         let path = format!("/guilds/{guild}/profile");
         self.json(self.request(Method::GET, &path)).await
@@ -1509,6 +1623,12 @@ impl Api {
     pub async fn delete_emoji(&self, guild: &str, emoji: &str) -> Result<()> {
         let path = format!("/guilds/{guild}/emojis/{emoji}");
         self.empty(self.request(Method::DELETE, &path)).await
+    }
+
+    /// Discord's default sticker packs, as its own client offers them:
+    /// every account has them, so it takes no permission.
+    pub async fn sticker_packs(&self) -> Result<Value> {
+        self.json(self.request(Method::GET, "/sticker-packs")).await
     }
 
     /// A server's stickers, each with who uploaded it.
@@ -1671,6 +1791,20 @@ impl Api {
         self.json(with_json(
             self.request(Method::PATCH, "/users/@me/profile"),
             body,
+        ))
+        .await
+    }
+
+    /// Chooses the server whose tag this account wears, or none, as Discord's
+    /// profile editor saves it. USER_UPDATE follows.
+    pub async fn set_server_tag(&self, server: Option<&str>) -> Result<()> {
+        let body = serde_json::json!({
+            "identity_guild_id": server,
+            "identity_enabled": server.is_some(),
+        });
+        self.empty(with_json(
+            self.request(Method::PUT, "/users/@me/clan"),
+            &body,
         ))
         .await
     }
@@ -2091,9 +2225,80 @@ impl Api {
         Ok(size)
     }
 
+    /// Asks Discord's CDN or media proxy for a file's bytes from `from`, up
+    /// to `to` when given, as a browser asks for the part of a video it
+    /// plays: an HTTP Range request. A server that doesn't take ranges sends
+    /// the whole file, which [`FilePart::start`] tells. Refuses a file over
+    /// `limit` bytes.
+    pub async fn download_part(
+        &self,
+        url: &str,
+        from: u64,
+        to: Option<u64>,
+        limit: u64,
+    ) -> Result<
+        FilePart<
+            impl futures_util::Stream<Item = Result<impl std::ops::Deref<Target = [u8]> + Send + use<>>>
+            + Send
+            + Unpin
+            + use<>,
+        >,
+    > {
+        allowed(url)?;
+        let range = match to {
+            Some(to) => format!("bytes={from}-{}", to.saturating_sub(1)),
+            None => format!("bytes={from}-"),
+        };
+        let response = self
+            .send_file(self.http.get(url).header(header::RANGE, range))
+            .await?;
+        let (start, size) = if response.status() == StatusCode::PARTIAL_CONTENT {
+            response
+                .headers()
+                .get(header::CONTENT_RANGE)
+                .and_then(|value| content_range(value.to_str().ok()?))
+                .context("Discord sent part of the file without saying which")?
+        } else {
+            (0, response.content_length())
+        };
+        if size.is_some_and(|size| size > limit) {
+            return Err(TooLarge.into());
+        }
+        let stall = self.stall;
+        let chunks =
+            futures_util::stream::unfold(Some((response, start)), move |state| async move {
+                let (mut response, at) = state?;
+                match tokio::time::timeout(stall, response.chunk()).await {
+                    Err(_) => Some((Err(Stalled.into()), None)),
+                    Ok(Err(error)) => Some((
+                        Err(anyhow::Error::new(error).context("the download stopped")),
+                        None,
+                    )),
+                    Ok(Ok(None)) => None,
+                    Ok(Ok(Some(chunk))) => {
+                        let at = at + chunk.len() as u64;
+                        if at > limit {
+                            return Some((Err(TooLarge.into()), None));
+                        }
+                        Some((Ok(chunk), Some((response, at))))
+                    }
+                }
+            });
+        Ok(FilePart {
+            start,
+            size,
+            chunks: Box::pin(chunks),
+        })
+    }
+
     /// Asks for a file, giving up if Discord doesn't answer within [`STALL`].
     async fn get_file(&self, url: &str) -> Result<Response> {
-        let response = tokio::time::timeout(self.stall, self.http.get(url).send())
+        self.send_file(self.http.get(url)).await
+    }
+
+    /// Sends a request for a file as [`Self::get_file`] does.
+    async fn send_file(&self, request: RequestBuilder) -> Result<Response> {
+        let response = tokio::time::timeout(self.stall, request.send())
             .await
             .map_err(|_| Stalled)?
             .context("could not reach Discord")?;
@@ -2132,10 +2337,15 @@ impl Api {
     /// A 429 means Discord didn't act on it, so it goes once more after the
     /// wait Discord asks for.
     async fn execute(&self, request: RequestBuilder) -> Result<Response> {
+        self.send_request(request, true).await
+    }
+
+    /// [`Self::execute`], sent again after a 429 only with `again`.
+    async fn send_request(&self, request: RequestBuilder, again: bool) -> Result<Response> {
         let (client, request) = request.build_split();
         let mut request = request.context("could not build the request")?;
         let route = limits::route(request.method(), request.url().path());
-        let mut retried = false;
+        let mut retried = !again;
         loop {
             match self.refusals.check() {
                 Ok(()) => {}
@@ -2660,6 +2870,71 @@ mod tests {
             assert!(error.is::<super::Stalled>(), "{error:#}");
             assert!(super::may_work_later(&error));
         }
+    }
+
+    /// What reaches the server when a tag is chosen and when it's taken off.
+    #[tokio::test]
+    async fn a_server_tag_goes_to_its_own_endpoint() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let requests = tokio::spawn(async move {
+            let mut requests = vec![];
+            for _ in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut read = vec![];
+                let (head, body) = loop {
+                    let mut chunk = [0; 4096];
+                    let got = socket.read(&mut chunk).await.unwrap();
+                    read.extend_from_slice(&chunk[..got]);
+                    let text = String::from_utf8_lossy(&read).into_owned();
+                    let Some((head, body)) = text.split_once("\r\n\r\n") else {
+                        continue;
+                    };
+                    let length = head
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length: ")?
+                                .parse::<usize>()
+                                .ok()
+                        })
+                        .unwrap_or_default();
+                    if body.len() >= length {
+                        break (head.to_owned(), body.to_owned());
+                    }
+                };
+                socket
+                    .write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\n\r\n")
+                    .await
+                    .unwrap();
+                let line = head.lines().next().unwrap().to_owned();
+                let body: serde_json::Value = serde_json::from_str(&body).unwrap();
+                requests.push((line, body));
+            }
+            requests
+        });
+        let mut api = super::Api::anonymous().unwrap();
+        api.base = format!("http://{address}/api/v9");
+        api.set_server_tag(Some("9")).await.unwrap();
+        api.set_server_tag(None).await.unwrap();
+        let line = "PUT /api/v9/users/@me/clan HTTP/1.1".to_owned();
+        assert_eq!(
+            requests.await.unwrap(),
+            [
+                (
+                    line.clone(),
+                    serde_json::json!({"identity_guild_id": "9", "identity_enabled": true})
+                ),
+                (
+                    line,
+                    serde_json::json!({"identity_guild_id": null, "identity_enabled": false})
+                ),
+            ]
+        );
     }
 
     #[test]

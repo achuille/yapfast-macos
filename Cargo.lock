@@ -330,6 +330,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "380962b3d93b99642e50b9febf72c071e97e8b32d86eae9cf4ef582bb960ae6e"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "archery"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1484,6 +1493,15 @@ name = "crossbeam-epoch"
 version = "0.9.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-queue"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03e8bd762f7479489c70ed6c768ddca99d7296857de437a68dcb2a94365b3fae"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -4368,13 +4386,15 @@ dependencies = [
 
 [[package]]
 name = "ksni"
-version = "0.3.6"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "814b44c24cd2cb236c3b8a41c7f08237b452a8e76ecaa81f1cec40b5b678215b"
+checksum = "1bcc1cb43797140f74b711f1c4a49f48a7a7429f211c5fb78264e7bcd1e99caf"
 dependencies = [
+ "arc-swap",
  "async-executor",
  "async-io",
  "async-lock",
+ "crossbeam-queue",
  "futures-channel",
  "futures-lite",
  "futures-util",
@@ -5623,6 +5643,12 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
+name = "minisign-verify"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "871285dc19d8d0ebe0eef3d0e99a205f2a71363b122632cbbfa4a6c370a960ce"
 
 [[package]]
 name = "miniz_oxide"
@@ -11507,12 +11533,13 @@ checksum = "aee1b19627c7c60102ab80d3a9cbe18de90bfe03bfa6c3715447681f0e8c8af6"
 
 [[package]]
 name = "yapfast"
-version = "0.3.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "arboard",
  "emojis",
  "futures-util",
+ "harfrust",
  "i-slint-backend-testing",
  "i-slint-core",
  "i-slint-renderer-skia",
@@ -11520,13 +11547,17 @@ dependencies = [
  "ksni",
  "libc",
  "memmap2",
+ "minisign-verify",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "png",
  "qrcode",
+ "reqwest 0.13.5",
  "rfd",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "skia-safe",
  "slint",
  "tempfile",
@@ -11536,6 +11567,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-scanner",
  "webbrowser",
+ "windows",
  "windows-sys 0.61.2",
  "wl-clipboard-rs",
  "x11rb",
@@ -11562,6 +11594,7 @@ dependencies = [
  "gif",
  "image",
  "keyring",
+ "libc",
  "libpulse-binding",
  "libpulse-simple-binding",
  "livekit",
@@ -11579,6 +11612,7 @@ dependencies = [
  "pulldown-cmark",
  "rand 0.9.5",
  "realfft",
+ "resvg",
  "rustls",
  "serde",
  "serde_json",
@@ -11610,6 +11644,7 @@ dependencies = [
  "davey",
  "flate2",
  "futures-util",
+ "iana-time-zone",
  "keyring",
  "libc",
  "openmls",

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Package the release binary; keep all output in target/macos."""
 import argparse
+import json
 import os
 import pathlib
 import plistlib
@@ -9,6 +10,8 @@ import shutil
 import subprocess
 import tomllib
 import tempfile
+
+from release_package import dependency_notices
 
 root = pathlib.Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
@@ -56,6 +59,27 @@ with (contents / 'Info.plist').open('wb') as f:
     plistlib.dump(info, f)
 for name in ['LICENSE', 'README.md']:
     shutil.copy2(root / name, contents / 'Resources' / name)
+metadata = json.loads(subprocess.check_output(
+    ['cargo', 'metadata', '--locked', '--format-version', '1', '--filter-platform',
+     subprocess.check_output(['rustc', '-vV'], text=True).split('host: ')[1].splitlines()[0]],
+    cwd=root, text=True))
+build = pathlib.Path(os.environ.get('CARGO_TARGET_DIR', metadata['target_directory'])) / profile / 'build'
+
+def native_notice(pattern):
+    matches = list(build.glob(pattern))
+    if not matches:
+        raise SystemExit(f'Missing native license: {pattern}; build the app first.')
+    return max(matches, key=lambda path: path.stat().st_mtime).parent
+
+licenses = contents / 'Resources' / 'licenses'
+if licenses.exists():
+    shutil.rmtree(licenses)
+dependencies = dependency_notices(
+    metadata, contents / 'Resources', licenses, None,
+    native_notice('skia-bindings-*/out/skia/LICENSE_SKIA'),
+    native_notice('scratch-*/out/livekit_webrtc/livekit/*/*/LICENSE.md'))
+(contents / 'Resources' / 'THIRD-PARTY.json').write_text(
+    json.dumps(dependencies, indent=2) + '\n')
 # Apple Development / Developer ID signing preserves Keychain's team identity
 # across builds. A self-signed certificate does not fix its cdhash partitions.
 identity = os.environ.get('YAPFAST_SIGNING_IDENTITY', '-')

@@ -6,6 +6,15 @@ use std::{
     ptr::NonNull,
     time::Duration,
 };
+
+#[cfg_attr(not(feature = "discord"), allow(dead_code))]
+pub fn raise_priority(_: super::Priority) -> Result<&'static str, String> {
+    Err("CoreAudio schedules its callbacks; worker priority is unchanged".into())
+}
+
+#[cfg(feature = "discord")]
+pub fn full_speed(_: bool) {}
+
 unsafe extern "C" {
     fn yf_audio_open(
         input: c_int,

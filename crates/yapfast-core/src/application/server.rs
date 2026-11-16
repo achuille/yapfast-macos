@@ -6,7 +6,7 @@
 use super::*;
 use crate::chat::{
     DiscordCommand, NotificationChange, Notifications, Permission, ServerNotifications,
-    ServerPreview, ServerRole,
+    ServerPreview, ServerRole, TagServerAnswer,
 };
 
 #[cfg(feature = "discord")]
@@ -61,6 +61,8 @@ fn bits(permission: Permission) -> u64 {
         Permission::ViewAuditLog => permission::VIEW_AUDIT_LOG,
         Permission::ManageExpressions => permission::MANAGE_GUILD_EXPRESSIONS,
         Permission::CreateExpressions => permission::CREATE_GUILD_EXPRESSIONS,
+        Permission::UseExternalEmojis => permission::USE_EXTERNAL_EMOJIS,
+        Permission::UseExternalStickers => permission::USE_EXTERNAL_STICKERS,
     }
 }
 
@@ -76,6 +78,28 @@ impl Application {
         let (guild, channel) = place(at)?;
         let server = snapshot.servers.iter().find(|server| server.id == guild)?;
         Some((server, channel, snapshot.user_id.as_deref()?))
+    }
+
+    /// The user id of the owner of the Discord server a place is in, when
+    /// it's known.
+    pub fn server_owner(&self, place: &str) -> Option<String> {
+        #[cfg(feature = "discord")]
+        if let Some((server, _, _)) = self.discord_place(place) {
+            return server.owner_id.clone();
+        }
+        // A group DM's creator, whom its member list crowns, as Discord's does.
+        #[cfg(feature = "discord")]
+        if let Some((_, Some(channel))) = self::place(place)
+            && let Some(snapshot) = self.discord.as_ref()
+        {
+            return snapshot
+                .conversations
+                .iter()
+                .find(|conversation| conversation.id == channel && conversation.group)
+                .and_then(|conversation| conversation.owner.clone());
+        }
+        let _ = place;
+        None
     }
 
     /// A Discord server's roles, highest first, without @everyone; empty for
@@ -122,6 +146,34 @@ impl Application {
         }
         let _ = (place, permission);
         false
+    }
+
+    /// Whether the open room lets this account use another server's emoji or
+    /// stickers, as `permission` names them: anywhere outside a server, as a
+    /// DM is, and in a server's channel as its roles and overwrites say,
+    /// which Discord's client asks even of Nitro. Until the server's roles
+    /// are known, it may.
+    pub(super) fn may_use_external(&self, permission: Permission) -> bool {
+        let Some(room) = self.state.selected.as_deref() else {
+            return true;
+        };
+        #[cfg(feature = "discord")]
+        if let Some((server, Some(_), _)) = self.discord_place(room) {
+            return server.roles.is_empty() || self.may(room, permission);
+        }
+        let _ = (room, permission);
+        true
+    }
+
+    /// Whether this account may do what `permission` names in the Discord
+    /// server a place is in, whatever that channel's overwrites say, as
+    /// Discord's member menu asks for Manage Roles.
+    pub fn may_in_server(&self, place: &str, permission: Permission) -> bool {
+        #[cfg(feature = "discord")]
+        if let Some((server, _, _)) = self.discord_place(place) {
+            return self.may(&discord::server_id(&server.id), permission);
+        }
+        self.may(place, permission)
     }
 
     /// Whether this account outranks `user`, holding `roles`, in the Discord
@@ -293,5 +345,49 @@ impl Application {
                 tracing::warn!(%error, "could not show what a server's card shows");
             }
         }
+    }
+
+    /// Asks Discord for the profile of the server a tag is from, for the
+    /// tag's card, which loads until it answers; opened again after a
+    /// failure, it tries again. Discord's service answers from what it
+    /// fetched in the last minute, so a card opened again soon asks Discord
+    /// nothing.
+    pub(super) fn open_server_tag(&mut self, server: String) -> Vec<Effect> {
+        if self.state.preview || Network::of(&server) != Network::Discord {
+            return vec![];
+        }
+        if !self.state.discord_online {
+            let failed = Err("Discord is out of reach".to_owned());
+            self.state.tag_server = Some((server, failed));
+            return vec![];
+        }
+        if self
+            .state
+            .tag_server
+            .as_ref()
+            .is_some_and(|(asked, answer)| *asked == server && answer.is_err())
+        {
+            self.state.tag_server = None;
+        }
+        vec![Effect::Backend(Command::Discord(
+            DiscordCommand::TagServer { server },
+        ))]
+    }
+
+    /// Keeps what Discord said of a tag's server, for its card. A failure
+    /// leaves what an earlier answer for the same server said.
+    pub(super) fn show_tag_server(&mut self, server: String, result: TagServerAnswer) {
+        if let Err(error) = &result {
+            tracing::debug!(%error, "Discord didn't show a server tag's server");
+            if self
+                .state
+                .tag_server
+                .as_ref()
+                .is_some_and(|(shown, answer)| *shown == server && answer.is_ok())
+            {
+                return;
+            }
+        }
+        self.state.tag_server = Some((server, result));
     }
 }

@@ -7,7 +7,7 @@ use super::{
     channels::SEARCH_PAUSE,
     channels::SharedPreviews,
     commands::NOT_DISCORD,
-    render::{chat_profile, found_in, hits_in, with_previews},
+    render::{chat_badges, chat_profile, found_in, hits_in, with_previews},
     *,
 };
 use crate::chat::{
@@ -76,9 +76,13 @@ pub(super) fn command(
                 .members_with_role(guild, &role)
                 .into_iter()
                 .map(|user| ChatMember {
+                    bot: false,
                     name: discord.name(guild, &user).unwrap_or_else(|| user.clone()),
                     username: discord.username(&user),
                     avatar: Some(discord.avatar(Some(guild), &user)),
+                    decoration: None,
+                    nameplate: None,
+                    style: None,
                     color: server.and_then(|server| discord.color(server, &user)),
                     role: Role::Member,
                     group: None,
@@ -87,7 +91,11 @@ pub(super) fn command(
                     activities: Default::default(),
                     roles: discord.roles(guild, &user),
                     timed_out_until: None,
+                    tag: None,
+                    boosting_since: None,
                     id: user,
+                    group_icon: None,
+                    role_icon: None,
                 })
                 .collect();
             members.sort_by_key(|member| member.name.to_lowercase());
@@ -131,9 +139,13 @@ pub(super) fn command(
                 let members = found
                     .into_iter()
                     .map(|user| ChatMember {
+                        bot: false,
                         name: discord.name(&guild, &user).unwrap_or_else(|| user.clone()),
                         username: discord.username(&user),
                         avatar: Some(discord.avatar(Some(&guild), &user)),
+                        decoration: None,
+                        nameplate: None,
+                        style: None,
                         color: server.and_then(|server| discord.color(server, &user)),
                         role: Role::Member,
                         group: None,
@@ -142,7 +154,11 @@ pub(super) fn command(
                         activities: Default::default(),
                         roles: discord.roles(&guild, &user),
                         timed_out_until: None,
+                        tag: None,
+                        boosting_since: None,
                         id: user,
+                        group_icon: None,
+                        role_icon: None,
                     })
                     .collect();
                 let _ = events.send(Event::MemberMatches {
@@ -154,26 +170,137 @@ pub(super) fn command(
         }
         return None;
     }
-    if let Command::Discord(DiscordCommand::Profile { room, user }) = command {
+    if let Command::Discord(DiscordCommand::ActivityFeed) = command {
+        match discord {
+            Ok(discord) => {
+                tokio::spawn(activity_feed(discord.clone(), events.clone()));
+            }
+            Err(_) => {
+                let _ = events.send(Event::ActivityFeed(Arc::default()));
+            }
+        }
+        return None;
+    }
+    if let Command::Discord(DiscordCommand::ActivityPeople { room, users }) = command {
+        if let (Ok(discord), Some((guild, channel))) = (discord, discord::parse_room(&room)) {
+            let (discord, events) = (discord.clone(), events.clone());
+            let (guild, channel) = (guild.to_owned(), channel.to_owned());
+            tokio::spawn(async move {
+                let people = discord.activity_people(&guild, &channel, &users).await;
+                let _ = events.send(Event::ActivityPeople {
+                    room,
+                    people: people.into(),
+                });
+            });
+        }
+        return None;
+    }
+    if let Command::Discord(DiscordCommand::Profile {
+        room,
+        user,
+        effect,
+        frame,
+    }) = command
+    {
         match (discord, discord::parse_room(&room)) {
             (Ok(discord), Some((guild, _))) => {
                 let (discord, events, guild) = (discord.clone(), events.clone(), guild.to_owned());
                 tokio::spawn(async move {
+                    // A frame the shop described already comes with the card.
+                    let framed = |profile: yapfast_discord::profile::Profile| {
+                        let layers = profile
+                            .frame
+                            .as_deref()
+                            .filter(|_| frame)
+                            .and_then(|sku| discord.kept_frame(sku))
+                            .flatten();
+                        let mut shown = chat_profile(&discord, &guild, profile);
+                        if let Some(layers) = layers {
+                            shown.frame = layers.iter().map(Into::into).collect();
+                        }
+                        shown
+                    };
                     let kept = |profile| {
                         let _ = events.send(Event::KeptProfile {
                             user: user.clone(),
-                            profile: chat_profile(&discord, &guild, profile),
+                            profile: framed(profile),
                         });
                     };
-                    let result = discord
-                        .profile(&guild, &user, kept)
-                        .await
-                        .map(|profile| chat_profile(&discord, &guild, profile))
-                        .map_err(|error| {
+                    let profile = match discord.profile(&guild, &user, kept).await {
+                        Ok(profile) => profile,
+                        Err(error) => {
                             tracing::warn!(%error, "could not fetch a Discord profile");
-                            error.to_string()
-                        });
-                    let _ = events.send(Event::Profile { user, result });
+                            let _ = events.send(Event::Profile {
+                                user,
+                                result: Err(error.to_string()),
+                            });
+                            return;
+                        }
+                    };
+                    // The effect over the card is the shop's to describe, and
+                    // comes after the card does.
+                    let effect = profile.effect.clone().filter(|_| effect);
+                    // A frame not yet described comes after the card, as the
+                    // effect does.
+                    let frame_sku = profile
+                        .frame
+                        .clone()
+                        .filter(|sku| frame && discord.kept_frame(sku).is_none());
+                    let mut badges = profile.badges.clone();
+                    let _ = events.send(Event::Profile {
+                        user: user.clone(),
+                        result: Ok(framed(profile)),
+                    });
+                    // The effect and the badges' levels come after the card is
+                    // on screen, and together, as neither waits for the other.
+                    let effect_events = events.clone();
+                    let effect_discord = discord.clone();
+                    let effect_task = async move {
+                        let Some(sku) = effect else { return };
+                        match effect_discord.profile_effect(&sku).await {
+                            Ok(Some(effect)) => {
+                                let _ = effect_events
+                                    .send(Event::ProfileEffect(Arc::new((&*effect).into())));
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                tracing::warn!(%error, "could not fetch a Discord profile effect");
+                            }
+                        }
+                    };
+                    let badges_task = async {
+                        if discord.badge_levels(&guild, &user, &mut badges).await {
+                            let _ = events.send(Event::BadgeLevels {
+                                user: user.clone(),
+                                badges: chat_badges(std::mem::take(&mut badges)),
+                            });
+                        }
+                    };
+                    // The note this account keeps on them fills the full profile's.
+                    let note_task = async {
+                        if let Ok(note) = discord.note(&user).await {
+                            let _ = events.send(Event::Note {
+                                user: user.clone(),
+                                result: Ok(note),
+                            });
+                        }
+                    };
+                    let frame_task = async {
+                        let Some(sku) = frame_sku else { return };
+                        match discord.profile_frame(&sku).await {
+                            Ok(Some(layers)) => {
+                                let _ = events.send(Event::ProfileFrame {
+                                    user: user.clone(),
+                                    frame: layers.iter().map(Into::into).collect(),
+                                });
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                tracing::warn!(%error, "could not fetch a Discord profile frame");
+                            }
+                        }
+                    };
+                    tokio::join!(effect_task, badges_task, note_task, frame_task);
                 });
             }
             (discord, _) => {
@@ -261,15 +388,17 @@ pub(super) fn command(
     if let Command::Discord(DiscordCommand::SetCustomStatus(custom)) = command {
         match discord {
             Ok(discord) => {
-                let (discord, events) = (discord.clone(), events.clone());
+                let events = events.clone();
                 let custom = custom.map(|custom| yapfast_discord::settings::CustomStatus {
                     text: custom.text,
                     emoji_name: custom.emoji,
                     emoji_id: custom.emoji_id,
                     expires_at_ms: custom.expires_at_ms,
                 });
+                // Made now, so changes keep the order they were asked in.
+                let change = discord.set_custom_status(custom);
                 tokio::spawn(async move {
-                    let result = discord.set_custom_status(custom).await.map_err(|error| {
+                    let result = change.await.map_err(|error| {
                         tracing::warn!(
                             error = format!("{error:#}"),
                             "could not set the custom status"
@@ -369,9 +498,10 @@ pub(super) fn command(
     if let Command::Discord(DiscordCommand::ShowGame(shown)) = command {
         match discord {
             Ok(discord) => {
-                let (discord, events) = (discord.clone(), events.clone());
+                let events = events.clone();
+                let change = discord.set_show_game(shown);
                 tokio::spawn(async move {
-                    let result = discord.set_show_game(shown).await.map_err(|error| {
+                    let result = change.await.map_err(|error| {
                         tracing::warn!(
                             error = format!("{error:#}"),
                             "could not change sharing the game played"
@@ -390,9 +520,10 @@ pub(super) fn command(
     if let Command::Discord(DiscordCommand::SetStatus(status)) = command {
         match discord {
             Ok(discord) => {
-                let (discord, events) = (discord.clone(), events.clone());
+                let events = events.clone();
+                let change = discord.set_status(&status);
                 tokio::spawn(async move {
-                    let result = discord.set_status(&status).await.map_err(|error| {
+                    let result = change.await.map_err(|error| {
                         tracing::warn!(error = format!("{error:#}"), "could not set the status");
                         error.to_string()
                     });
@@ -1550,12 +1681,20 @@ fn change_person(
                     return;
                 }
             }
-            DiscordCommand::Relationship { user, change } => match change {
+            DiscordCommand::Relationship {
+                user,
+                change,
+                location,
+            } => match change {
                 RelationshipChange::Unfriend => {
-                    (discord.unfriend(&user).await, "remove the friend")
+                    (discord.unfriend(&user, location).await, "remove the friend")
                 }
-                RelationshipChange::Block => (discord.block(&user, true).await, "block them"),
-                RelationshipChange::Unblock => (discord.block(&user, false).await, "unblock them"),
+                RelationshipChange::Block => {
+                    (discord.block(&user, true, location).await, "block them")
+                }
+                RelationshipChange::Unblock => {
+                    (discord.block(&user, false, location).await, "unblock them")
+                }
                 RelationshipChange::Ignore => (discord.ignore(&user, true).await, "ignore them"),
                 RelationshipChange::Unignore => {
                     (discord.ignore(&user, false).await, "stop ignoring them")
@@ -1720,6 +1859,15 @@ pub(super) fn places_used(
         .collect()
 }
 
+/// The favourite and used emoji, as the application keeps them.
+pub(super) fn emojis(emojis: yapfast_discord::frecency::Emojis) -> crate::chat::DiscordEmojis {
+    crate::chat::DiscordEmojis {
+        favorites: emojis.favorites,
+        used: emojis.used.map(places_used),
+        reactions: emojis.reactions.map(places_used),
+    }
+}
+
 /// What an invite shows, as the application keeps it.
 fn invite_preview(preview: &yapfast_discord::invite::Preview) -> InvitePreview {
     InvitePreview {
@@ -1810,3 +1958,34 @@ fn oauth_preview(
             .collect(),
     }
 }
+
+/// Fetches the Activity panel's feed, retrying as Discord's client does, and
+/// says when to ask again if the feed doesn't leave that to Discord.
+async fn activity_feed(discord: Discord, events: UnboundedSender<Event>) {
+    let mut retries = [1, 2, 4, 8].into_iter();
+    let feed = loop {
+        match discord.activity_feed().await {
+            Ok(feed) => break feed,
+            Err(error) => {
+                tracing::warn!(%error, "could not fetch the Discord activity feed");
+                let Some(minutes) = retries.next() else {
+                    let _ = events.send(Event::ActivityFeed(Arc::default()));
+                    return;
+                };
+                tokio::time::sleep(Duration::from_secs(minutes * 60)).await;
+            }
+        }
+    };
+    drop(discord);
+    let _ = events.send(Event::ActivityFeed(feed.entries));
+    if feed.stale_after_ms.is_none() {
+        let wait = feed.wait_ms.unwrap_or(FEED_WAIT_MS).max(FEED_LEAST_WAIT_MS);
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+        let _ = events.send(Event::ActivityFeedDue);
+    }
+}
+
+/// How long until asking again when Discord doesn't say, in milliseconds.
+const FEED_WAIT_MS: u64 = 5 * 60 * 1000;
+/// The least wait however Discord answers, in milliseconds.
+const FEED_LEAST_WAIT_MS: u64 = 60 * 1000;

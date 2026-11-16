@@ -14,6 +14,7 @@ for tool in cargo cmake ninja pkg-config; do
   command -v "$tool" >/dev/null || { echo "Missing $tool. See docs/macos.md." >&2; exit 1; }
 done
 source scripts/release-env "$(rustc -vV | sed -n 's/^host: //p')"
+if [[ -n ${YAPFAST_RELEASE_TAG:-} ]]; then export YAPFAST_RELEASE=1; fi
 cargo build --locked --release --bin yapfast
 python3 scripts/package-macos.py
 

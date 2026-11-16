@@ -61,6 +61,7 @@ const STREAM_WATCH: u64 = 20;
 const STREAM_SET_PAUSED: u64 = 22;
 const REQUEST_SOUNDBOARD_SOUNDS: u64 = 31;
 const GUILD_SUBSCRIPTIONS_BULK: u64 = 37;
+const REQUEST_CHANNEL_INFO: u64 = 43;
 
 /// Discord closed the gateway, with its close code.
 #[derive(Debug)]
@@ -300,6 +301,13 @@ impl Gateway {
         Self::connect_to(&url, token, presence, reconnects, limiter).await
     }
 
+    /// Connects as [`Self::connect`] does, to a fake Discord at `url`.
+    #[cfg(test)]
+    pub(crate) async fn connect_at(url: &str, presence: Value) -> Result<(Self, Value)> {
+        let limiter = Limiter::new(SEND_LIMIT, SEND_WINDOW);
+        Self::connect_to(url, "token", presence, &mut Reconnects::default(), limiter).await
+    }
+
     async fn connect_to(
         url: &str,
         token: &str,
@@ -460,6 +468,19 @@ impl Gateway {
     pub async fn request_soundboard_sounds(&mut self, guild_ids: &[String]) -> Result<()> {
         self.send(REQUEST_SOUNDBOARD_SOUNDS, json!({"guild_ids": guild_ids}))
             .await
+    }
+
+    /// Asks when the session of each of a server's busy voice channels
+    /// started, as the web client does when the server opens. Discord
+    /// answers with CHANNEL_INFO, and says when one starts or ends with
+    /// VOICE_CHANNEL_START_TIME_UPDATE. It asks for the channels' statuses
+    /// too, unused, as the web client always asks for both.
+    pub async fn request_channel_info(&mut self, guild_id: &str) -> Result<()> {
+        self.send(
+            REQUEST_CHANNEL_INFO,
+            json!({"guild_id": guild_id, "fields": ["status", "voice_start_time"]}),
+        )
+        .await
     }
 
     /// Whether Discord asked Yapfast to wait before asking about `guild_id`'s
@@ -1299,12 +1320,12 @@ mod tests {
         assert_eq!(next(&mut gateway).await.unwrap().event, Event::TypingStart);
 
         // An event Yapfast doesn't know passes through by name, with its data.
-        peer.dispatch("GUILD_SCHEDULED_EVENT_CREATE", json!({"id": "7"}))
+        peer.dispatch("GUILD_AUDIT_LOG_ENTRY_CREATE", json!({"id": "7"}))
             .await;
         let other = next(&mut gateway).await.unwrap();
         assert_eq!(
             other.event,
-            Event::Other("GUILD_SCHEDULED_EVENT_CREATE".into())
+            Event::Other("GUILD_AUDIT_LOG_ENTRY_CREATE".into())
         );
         assert_eq!(other.data["id"], "7");
     }

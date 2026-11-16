@@ -23,7 +23,7 @@ application model are in `yapfast-core`.
   UI](chat-ui.md#layout-and-look)), Lucide SVG icons, custom text fields, and
   window sizing from 1120×760 down to 800×560. Settings cover the window in
   sections: account, appearance (the [themes](themes.md)), voice and video,
-  messages (text size, clock and link previews), notifications, sounds, Discord
+  messages (text size, clock, link previews, folding long messages and boost gems), notifications, sounds, Discord
   and advanced (the renderer, closing to the tray), closed by its close button
   or Escape. Desktop notifications for DMs and mentions show while Yapfast
   isn't in front; clicking one opens the conversation. Closing the window
@@ -78,7 +78,8 @@ software surface when the GPU fails, so Yapfast owns the fallback instead:
 - If window creation, the GPU surface or the event loop fails, Yapfast logs the
   technical reason, releases the session and runtime, and restarts itself with
   `--renderer software`. Linux replaces the process; Windows starts the new
-  process and returns its exit code. The window shows a dismissible notice.
+  process and ends without waiting for it, so the old window doesn't hang
+  beside the new one. The window shows a dismissible notice.
 - Three seconds after the event loop starts, Yapfast checks that the native window
   exists. Slint 1.18 waits up to 500 ms for the desktop appearance query before
   creating the first window, and a GPU surface failure at that point is stored
