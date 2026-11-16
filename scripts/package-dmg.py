@@ -18,8 +18,8 @@ if not re.fullmatch(r'\d+\.\d+\.\d+(?:-macos\.\d+)?', args.version):
     parser.error('Use an app version or a macOS release version, without the v prefix.')
 subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
 info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-if info['CFBundleShortVersionString'] != args.version.split('-')[0]:
-    parser.error('The release version must match the app version.')
+if info.get('YapfastReleaseVersion', info['CFBundleShortVersionString']) != args.version:
+    parser.error('The release version must match the app bundle.')
 arch = subprocess.check_output(['uname', '-m'], text=True).strip()
 output = app.parent / f'Yapfast-{args.version}-macOS-{arch}.dmg'
 if output.exists():
