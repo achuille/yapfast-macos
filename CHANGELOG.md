@@ -9,7 +9,10 @@
 - English README, macOS documentation and permission descriptions.
 - macOS releases have a dedicated publishing workflow.
 
-This packaging release reuses the executable from 0.3.0-macos.2. App behavior is unchanged.
+### Fixed
+- Fresh builds wait for WebRTC headers before compiling native code.
+
+This release reuses the executable from 0.3.0-macos.2. App behavior is unchanged.
 
 ## 0.3.0-macos.2 - 2026-11-07
 

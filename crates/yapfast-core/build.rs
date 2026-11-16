@@ -48,7 +48,13 @@ fn main() {
     ] {
         println!("cargo:rerun-if-changed=native/{file}");
     }
-    let include = webrtc_sys_build::webrtc_dir().join("include");
+    // Cargo can run this script before webrtc-sys downloads the shared headers.
+    // Its downloader locks the archive so concurrent builds share one download.
+    let webrtc = webrtc_sys_build::webrtc_dir();
+    if !webrtc.exists() {
+        webrtc_sys_build::download_webrtc().expect("download libwebrtc headers");
+    }
+    let include = webrtc.join("include");
     let third_party = include.join("third_party");
     let mut picture = cc::Build::new();
     picture
