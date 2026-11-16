@@ -1,0 +1,26 @@
+# Changelog
+
+## 0.3.0-macos.3 - 2026-11-16
+
+### Added
+- Drag-to-Applications DMG, source archive and SHA-256 checksums.
+
+### Changed
+- English README, macOS documentation and permission descriptions.
+- macOS releases have a dedicated publishing workflow.
+
+This packaging release reuses the executable from 0.3.0-macos.2. App behavior is unchanged.
+
+## 0.3.0-macos.2 - 2026-11-07
+
+### Fixed
+- Missing Japanese punctuation and styled letters.
+- Cmd+, now opens settings on macOS, including AZERTY keyboards.
+- Paused emoji and occluded windows no longer keep unnecessary rendering active.
+- Metal retains fewer cached resources.
+
+## 0.3.0-macos.1 - 2026-11-06
+
+### Added
+- Initial Apple Silicon port of [Yapfast](https://github.com/yapfast/yapfast).
+- Metal rendering, CoreAudio, VideoToolbox, AudioToolbox and Keychain integration.

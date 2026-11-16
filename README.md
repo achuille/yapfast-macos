@@ -1,23 +1,19 @@
-# Yapfast pour Mac
+# Yapfast for Mac
 
-Discord dans une app native en Rust.
+A macOS port of [Yapfast](https://github.com/yapfast/yapfast), the native Discord client written in Rust.
 
-![Interface Yapfast](docs/images/yapfast.png)
+![Yapfast interface](docs/images/yapfast.png)
 
-*Interface du projet d’origine. Les fonctions disponibles sur Mac sont détaillées ci-dessous.*
+*Screenshot from the original project.*
 
-## Installer
+[Download for Apple Silicon](https://github.com/achuille/yapfast-macos/releases/latest) · macOS 13+
 
-[Télécharger la version Mac](https://github.com/achuille/yapfast-macos/releases/tag/v0.3.0-macos.2), décompresser, puis glisser **Yapfast.app** dans Applications.
+Open the DMG and drag **Yapfast** into **Applications**. The app is not notarized by Apple.
 
-Apple Silicon · macOS 13+ · version expérimentale, non notarisée par Apple.
+Metal rendering, CoreAudio, hardware H.264 playback and Keychain storage. **⌘,** opens settings.
 
-## Sur Mac
+Calls and screen sharing still need real-world validation. Camera, notifications, menu bar support and application audio capture are not ported yet.
 
-Rendu Metal, audio CoreAudio, vidéos H.264 et AAC via les composants de macOS. Session dans le Trousseau, presse-papiers et raccourcis Cmd. **⌘,** ouvre les réglages.
+[Build and platform notes](docs/macos.md) · [Changelog](CHANGELOG.md)
 
-Connexion et lecture des conversations vérifiées sur un compte de test. Les appels réels et le partage d’écran restent à valider. Caméra, notifications, barre de menus, démarrage à la connexion et partage du son des applications restent à porter.
-
-[État du port et tests](docs/macos.md) · [Compiler depuis les sources](docs/macos.md#compiler)
-
-Adapté de [yapfast/yapfast](https://github.com/yapfast/yapfast), sous [GPL-3.0](LICENSE). Crédits des ressources conservés dans `vendor/`. Client indépendant, sans affiliation à Discord.
+Based on [yapfast/yapfast](https://github.com/yapfast/yapfast). [GPL-3.0](LICENSE); third-party licenses remain in `vendor/`. This project is not affiliated with Discord.
